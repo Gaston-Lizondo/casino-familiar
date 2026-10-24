@@ -12,7 +12,16 @@
  *    carta cada uno y no se vuelven a separar. 21 después de separar paga 1:1, no 3:2.
  *  - Seguro (insurance) cuando el crupier muestra As: cuesta la mitad de la apuesta y paga 2:1.
  *  - Sin rendición (surrender).
- * Las cartas se sacan del FINAL del array shoe (shoe.pop()).
+ *
+ * Seguridad (como un casino online): el mazo se rebaraja en CADA mano, así que contar cartas no sirve,
+ * y la mesa guardada NO contiene cartas por salir ni la carta oculta del crupier. Cada carta se saca
+ * al azar en el momento en que se necesita, entre las que todavía no se vieron en la mano. La carta
+ * oculta recién se decide cuando el crupier la da vuelta. Cuando el crupier "mira" (con 10 o As) y no
+ * tiene blackjack, solo se recuerda eso (peeked), y la carta que después se da vuelta respeta esa condición.
+ * Las acciones que reparten cartas reciben el generador de azar (rng).
+ *
+ * Pruebas: si la mesa trae un mazo fijo en `shoe`, las cartas salen de su final (shoe.pop()), en el
+ * orden real de reparto (jugador, crupier, jugador, crupier), para armar situaciones exactas.
  *
  * Fases: betting -> insurance (solo si el crupier muestra As) -> player -> done.
  */
@@ -23,7 +32,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var VERSION = 2;
+  var VERSION = 3;
   var MAX_HANDS = 4;
   var RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
   var SUITS = ['♠', '♥', '♦', '♣'];
@@ -66,6 +75,7 @@
       phase: 'betting', // betting | insurance | player | done
       decks: opts.decks || 6,
       shoe: [],
+      peeked: false,
       dealer: [],
       turn: -1,
       round: 0,
@@ -77,9 +87,10 @@
   function migrate(table) {
     if (!table) return null;
     if (table.v === VERSION) return table;
+    if (table.v === 2) { var t2 = clone(table); t2.v = VERSION; t2.shoe = []; t2.peeked = false; return t2; }
     if (table.v !== 1) return null;
     var t = clone(table);
-    t.v = VERSION;
+    t.v = VERSION; t.shoe = []; t.peeked = false;
     t.seats = t.seats.map(function (o) {
       var s = newSeat(o.id);
       if (o.status !== 'idle') {
@@ -92,21 +103,59 @@
     return t;
   }
 
-  function draw(t) { return t.shoe.pop(); }
+  function isTen(r) { return cardValue(r) === 10; }
+
+  // Saca una carta al azar entre las que todavía no se vieron en esta mano (mazo nuevo cada mano).
+  // avoid(rank) -> true excluye ese valor (se usa para la carta oculta después de que el crupier miró).
+  function draw(t, rng, avoid) {
+    if (t.shoe && t.shoe.length) return t.shoe.pop();
+    if (!rng) throw new Error('Falta el generador de azar (rng)');
+    var used = {};
+    function mark(c) { var k = c.r + c.s; used[k] = (used[k] || 0) + 1; }
+    t.dealer.forEach(mark);
+    t.seats.forEach(function (s) { s.hands.forEach(function (hd) { hd.cards.forEach(mark); }); });
+    var pool = [], weights = [];
+    SUITS.forEach(function (su) {
+      RANKS.forEach(function (r) {
+        if (avoid && avoid(r)) return;
+        var n = t.decks - (used[r + su] || 0);
+        if (n > 0) { pool.push({ r: r, s: su }); weights.push(n); }
+      });
+    });
+    return pool[rng.weighted(weights)];
+  }
+
+  // El crupier mira su carta oculta (muestra 10 o As). Si tiene blackjack la carta queda en la mesa;
+  // si no, no se guarda nada salvo el dato de que miró.
+  function peek(t, rng) {
+    if (t.dealer.length >= 2) return handValue(t.dealer).blackjack;
+    var up = t.dealer[0].r, hole = draw(t, rng);
+    if ((up === 'A' && isTen(hole.r)) || (isTen(up) && hole.r === 'A')) { t.dealer.push(hole); return true; }
+    t.peeked = true;
+    return false;
+  }
+
+  // Da vuelta la carta oculta (la saca recién ahora).
+  function revealHole(t, rng) {
+    if (t.dealer.length >= 2) return;
+    var up = t.dealer[0].r, avoid = null;
+    if (t.peeked) avoid = up === 'A' ? isTen : (isTen(up) ? function (r) { return r === 'A'; } : null);
+    t.dealer.push(draw(t, rng, avoid));
+  }
 
   function recount(s) {
     s.wagered = s.hands.reduce(function (a, hd) { return a + hd.bet; }, 0) + (s.insurance || 0);
   }
 
-  function dealerHasBlackjack(t) { return handValue(t.dealer).blackjack; }
-
-  function dealerPlay(t) {
+  function dealerPlay(t, rng) {
     var needs = t.seats.some(function (s) { return s.hands.some(function (hd) { return hd.status === 'stand'; }); });
+    revealHole(t, rng);
     if (!needs) return;
-    while (handValue(t.dealer).total < 17) t.dealer.push(draw(t));
+    while (handValue(t.dealer).total < 17) t.dealer.push(draw(t, rng));
   }
 
-  function settle(t) {
+  function settle(t, rng) {
+    revealHole(t, rng);
     var dv = handValue(t.dealer);
     t.seats.forEach(function (s) {
       if (!s.hands.length) return;
@@ -135,20 +184,20 @@
 
   // Prepara la mano actual del asiento (reparte la 2ª carta de una mano separada).
   // Devuelve true si el jugador tiene que decidir algo.
-  function activate(t, s) {
+  function activate(t, s, rng) {
     var hd = s.hands[s.cur];
-    if (hd.cards.length === 1) hd.cards.push(draw(t));
+    if (hd.cards.length === 1) hd.cards.push(draw(t, rng));
     if (hd.status === 'playing' && (hd.splitAces || handValue(hd.cards).total === 21)) hd.status = 'stand';
     return hd.status === 'playing';
   }
 
   // Avanza a la próxima mano que debe jugar; si no queda ninguna, juega el crupier y se liquida.
-  function advance(t) {
+  function advance(t, rng) {
     var s = t.turn >= 0 ? t.seats[t.turn] : null;
     for (;;) {
       if (s) {
         if (s.hands[s.cur].status === 'playing') return;
-        if (s.cur + 1 < s.hands.length) { s.cur++; if (activate(t, s)) return; continue; }
+        if (s.cur + 1 < s.hands.length) { s.cur++; if (activate(t, s, rng)) return; continue; }
       }
       var j = t.turn + 1;
       while (j < t.seats.length && !(t.seats[j].hands.length && t.seats[j].hands[0].status === 'playing')) j++;
@@ -156,13 +205,13 @@
       t.turn = j; t.seats[j].cur = 0;
       return;
     }
-    dealerPlay(t);
-    settle(t);
+    dealerPlay(t, rng);
+    settle(t, rng);
   }
 
-  function beginPlay(t) {
+  function beginPlay(t, rng) {
     t.phase = 'player'; t.turn = -1;
-    advance(t);
+    advance(t, rng);
   }
 
   // bets: { [seatId]: monto }. Reparte y deja la mesa lista (seguro, jugar, o liquidada si el crupier tiene blackjack).
@@ -172,9 +221,10 @@
     var active = t.seats.filter(function (s) { return (bets[s.id] || 0) > 0; });
     if (!active.length) throw new Error('Nadie apostó');
 
-    if (t.shoe.length < t.decks * 52 * 0.25) t.shoe = newShoe(rng, t.decks);
+    var fixed = !!(t.shoe && t.shoe.length); // mazo fijo: solo en pruebas
+    if (!fixed) t.shoe = [];
     t.round++;
-    t.dealer = []; t.turn = -1;
+    t.dealer = []; t.turn = -1; t.peeked = false;
     t.seats.forEach(function (s) {
       var b = bets[s.id] || 0;
       s.hands = b > 0 ? [newHand([], b, false)] : [];
@@ -182,16 +232,16 @@
       recount(s);
     });
 
-    for (var pass = 0; pass < 2; pass++) {
-      active.forEach(function (s) { s.hands[0].cards.push(draw(t)); });
-      t.dealer.push(draw(t));
-    }
+    active.forEach(function (s) { s.hands[0].cards.push(draw(t, rng)); });
+    t.dealer.push(draw(t, rng));                                        // carta visible
+    active.forEach(function (s) { s.hands[0].cards.push(draw(t, rng)); });
+    if (fixed) t.dealer.push(draw(t, rng));                             // con mazo de prueba la oculta sale ya
     active.forEach(function (s) { if (handValue(s.hands[0].cards).blackjack) s.hands[0].status = 'blackjack'; });
 
     var up = cardValue(t.dealer[0].r);
     if (up === 11) { t.phase = 'insurance'; return t; }                 // primero se ofrece el seguro
-    if (up === 10 && dealerHasBlackjack(t)) { settle(t); return t; }    // el crupier mira su carta
-    beginPlay(t);
+    if (up === 10 && peek(t, rng)) { settle(t, rng); return t; }        // el crupier mira su carta
+    beginPlay(t, rng);
     return t;
   }
 
@@ -227,7 +277,7 @@
     return 0;
   }
 
-  function act(table, seatId, action) {
+  function act(table, seatId, action, rng) {
     var t = clone(table);
 
     if (t.phase === 'insurance') {
@@ -238,7 +288,7 @@
       else throw new Error('Acción desconocida: ' + action);
       recount(si);
       var pending = t.seats.some(function (s) { return s.hands.length && s.insurance === null; });
-      if (!pending) { if (dealerHasBlackjack(t)) settle(t); else beginPlay(t); }
+      if (!pending) { if (peek(t, rng)) settle(t, rng); else beginPlay(t, rng); }
       return t;
     }
 
@@ -246,7 +296,7 @@
     if (!s || s.id !== seatId) throw new Error('No es el turno de ' + seatId);
     var hd = s.hands[s.cur];
     if (action === 'hit') {
-      hd.cards.push(draw(t));
+      hd.cards.push(draw(t, rng));
       var v = handValue(hd.cards);
       if (v.bust) hd.status = 'bust'; else if (v.total === 21) hd.status = 'stand';
     } else if (action === 'stand') {
@@ -254,7 +304,7 @@
     } else if (action === 'double') {
       if (!canDouble(t, seatId)) throw new Error('No se puede doblar');
       hd.bet *= 2; hd.doubled = true;
-      hd.cards.push(draw(t));
+      hd.cards.push(draw(t, rng));
       hd.status = handValue(hd.cards).bust ? 'bust' : 'stand';
     } else if (action === 'split') {
       if (!canSplit(t, seatId)) throw new Error('No se puede separar');
@@ -262,12 +312,12 @@
       var a = newHand([hd.cards[0]], hd.bet, true), b = newHand([hd.cards[1]], hd.bet, true);
       a.splitAces = b.splitAces = aces;
       s.hands.splice(s.cur, 1, a, b);
-      activate(t, s); // la primera mano recibe su segunda carta
+      activate(t, s, rng); // la primera mano recibe su segunda carta
     } else {
       throw new Error('Acción desconocida: ' + action);
     }
     recount(s);
-    advance(t);
+    advance(t, rng);
     return t;
   }
 

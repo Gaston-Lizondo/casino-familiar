@@ -142,7 +142,7 @@
         var extra = BJ.extraBetRequired(table, seatId, action);
         if (!extra || !(await ctx.wallet.debit(extra))) { busy = false; render(); return; }
       }
-      table = BJ.act(table, seatId, action); ctx.sfx.play('card'); render();
+      table = BJ.act(table, seatId, action, rng); ctx.sfx.play('card'); render();
       if (table.phase === 'done') await finishRound();
       else { await persist(); busy = false; render(); }
     }

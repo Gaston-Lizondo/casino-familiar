@@ -115,10 +115,10 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg || ''}
     cardsInPopOrder.slice().reverse().forEach(r => t.shoe.push(C(r))); return t;
   };
   // Juega lo que falte de una ronda: nadie toma seguro, y cada mano usa la función de decisión.
-  const finish = (t, pick) => {
+  const finish = (t, pick, rng) => {
     let guard = 0;
-    while (t.phase === 'insurance') t = BJ.act(t, t.seats.find(s => s.hands.length && s.insurance === null).id, 'noinsurance');
-    while (t.phase === 'player') { const s = BJ.currentSeat(t); t = BJ.act(t, s.id, pick(t, s)); assert.ok(++guard < 200); }
+    while (t.phase === 'insurance') t = BJ.act(t, t.seats.find(s => s.hands.length && s.insurance === null).id, 'noinsurance', rng);
+    while (t.phase === 'player') { const s = BJ.currentSeat(t); t = BJ.act(t, s.id, pick(t, s), rng); assert.ok(++guard < 200); }
     return t;
   };
   const strategy = (t, s) => stratDecide(BJ, t, s.id);
@@ -223,9 +223,9 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg || ''}
     const rng = RNG.create(3); let t = BJ.createTable(['p']);
     for (let i = 0; i < 20; i++) {
       t = BJ.startRound(t, rng, { p: 10 });
-      if (t.phase === 'insurance') { const snap = JSON.stringify(t); BJ.act(t, 'p', 'insurance'); assert.strictEqual(JSON.stringify(t), snap); t = BJ.act(t, 'p', 'noinsurance'); }
-      if (t.phase === 'player') { const snap = JSON.stringify(t); BJ.act(t, 'p', 'hit'); assert.strictEqual(JSON.stringify(t), snap); }
-      t = finish(t, () => 'stand');
+      if (t.phase === 'insurance') { const snap = JSON.stringify(t); BJ.act(t, 'p', 'insurance', rng); assert.strictEqual(JSON.stringify(t), snap); t = BJ.act(t, 'p', 'noinsurance', rng); }
+      if (t.phase === 'player') { const snap = JSON.stringify(t); BJ.act(t, 'p', 'hit', rng); assert.strictEqual(JSON.stringify(t), snap); }
+      t = finish(t, () => 'stand', rng);
     }
   });
   await test('mesas guardadas con el formato anterior se migran', () => {
@@ -245,11 +245,11 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg || ''}
       while (t.phase !== 'done') {
         if (t.phase === 'insurance') {
           const s = t.seats.find(x => x.hands.length && x.insurance === null);
-          t = BJ.act(t, s.id, rng.int(2) ? 'insurance' : 'noinsurance');
+          t = BJ.act(t, s.id, rng.int(2) ? 'insurance' : 'noinsurance', rng);
         } else {
           const s = BJ.currentSeat(t); assert.ok(s && BJ.currentHand(t).status === 'playing');
           const opts = ['hit', 'stand']; if (BJ.canDouble(t, s.id)) opts.push('double'); if (BJ.canSplit(t, s.id)) opts.push('split');
-          t = BJ.act(t, s.id, rng.pick(opts));
+          t = BJ.act(t, s.id, rng.pick(opts), rng);
         }
         assert.ok(++guard < 300);
       }
@@ -264,14 +264,14 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg || ''}
         });
         assert.strictEqual(s.payout, pay + s.insPayout); assert.strictEqual(s.wagered, bets + (s.insurance || 0));
       });
-      assert.ok(t.shoe.length > 0);
+      assert.strictEqual(t.shoe.length, 0);
     }
   });
   await test('simulación (80k manos): estrategia básica ≈ 99,5% (la casa siempre gana por poco); "como el crupier" ≈ 94%', () => {
     const run = (pick, N, seed) => {
       const rng = RNG.create(seed); let t = BJ.createTable(['p']), wag = 0, ret = 0;
       for (let i = 0; i < N; i++) {
-        t = finish(BJ.startRound(t, rng, { p: 10 }), pick);
+        t = finish(BJ.startRound(t, rng, { p: 10 }), pick, rng);
         wag += t.seats[0].wagered - (t.seats[0].insurance || 0); ret += t.seats[0].payout;
       }
       return ret / wag;
@@ -282,14 +282,42 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg || ''}
     assert.ok(basic > 0.97 && basic < 1.015, basic);
     assert.ok(mimic > 0.90 && mimic < 0.985, mimic);
   });
-  await test('el mazo se rebaraja y nunca se queda sin cartas', () => {
-    const rng = RNG.create(77); let t = BJ.createTable(['p']); let reshuffles = 0, prev = 0;
-    for (let i = 0; i < 400; i++) {
-      t = finish(BJ.startRound(t, rng, { p: 10 }), () => 'hit');
-      if (t.shoe.length > prev + 100) reshuffles++;
-      prev = t.shoe.length;
+  await test('la mesa guardada no tiene cartas por salir ni la carta oculta del crupier', () => {
+    const rng = RNG.create(77); let t = BJ.createTable(['a', 'b']);
+    const secretFree = (x) => { assert.strictEqual(x.shoe.length, 0); assert.strictEqual(x.dealer.length, 1); };
+    for (let i = 0; i < 3000; i++) {
+      t = BJ.startRound(t, rng, { a: 10, b: 10 });
+      let guard = 0;
+      while (t.phase !== 'done') {
+        secretFree(t);
+        if (t.phase === 'insurance') t = BJ.act(t, t.seats.find(s => s.hands.length && s.insurance === null).id, 'noinsurance', rng);
+        else t = BJ.act(t, BJ.currentSeat(t).id, rng.pick(['hit', 'stand']), rng);
+        assert.ok(++guard < 100);
+      }
+      assert.ok(t.dealer.length >= 2);
+      // en una mano nunca aparece una misma carta más veces que mazos hay
+      const n = {}; [t.dealer].concat(...t.seats.map(s => s.hands.map(h => h.cards))).flat().forEach(c => { n[c.r + c.s] = (n[c.r + c.s] || 0) + 1; assert.ok(n[c.r + c.s] <= t.decks); });
     }
-    assert.ok(reshuffles >= 2, 'reshuffles=' + reshuffles);
+    assert.throws(() => BJ.act(BJ.startRound(BJ.createTable(['p']), RNG.create(1), { p: 10 }), 'p', 'hit'));  // sin rng no hay cartas
+  });
+  await test('la carta oculta respeta lo que el crupier ya miró, y el blackjack del crupier sale ~4,7%', () => {
+    const rng = RNG.create(31); let t = BJ.createTable(['p']); let rounds = 0, dealerBJ = 0, peekedTen = 0, peekedAce = 0;
+    for (let i = 0; i < 200000; i++) {
+      t = BJ.startRound(t, rng, { p: 10 });
+      const up = t.dealer[0].r, peekedNoBJ = t.phase === 'player' && BJ.cardValue(up) >= 10 || t.phase === 'insurance';
+      t = finish(t, () => 'stand', rng);
+      rounds++;
+      const v = BJ.handValue(t.dealer.slice(0, 2));
+      if (v.blackjack) dealerBJ++;
+      if (peekedNoBJ && t.peeked) {
+        if (up === 'A') { peekedAce++; assert.notStrictEqual(BJ.cardValue(t.dealer[1].r), 10); }
+        else { peekedTen++; assert.notStrictEqual(t.dealer[1].r, 'A'); }
+      }
+    }
+    const p = dealerBJ / rounds;
+    console.log('      blackjack del crupier:', (p * 100).toFixed(2) + '% (teórico ≈ 4,73%) · miró sin BJ:', peekedTen + peekedAce);
+    near(p, 2 * (4 / 13) * (1 / 13), 0.004, 'BJ crupier');
+    assert.ok(peekedTen > 1000 && peekedAce > 1000);
   });
 
   console.log('Store');

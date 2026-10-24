@@ -51,7 +51,9 @@ Fichas iniciales, PIN, valores de apuesta (10/50/100/500) y los jugadores inicia
 
 Verificado con simulaciones (`node tests/engines.test.js`). A la larga la casa siempre gana, como en un casino de verdad: ningún juego devuelve el 100 %.
 
-**Reglas del blackjack (mesa estándar de casino):** 6 mazos, el crupier se planta en cualquier 17 y mira su carta oculta con 10 o As, blackjack paga 3:2, se puede doblar con las dos primeras cartas (también después de separar), separar pares hasta 4 manos (los ases reciben una sola carta y no se vuelven a separar), seguro 2:1 cuando el crupier muestra As, sin rendición.
+**Reglas del blackjack (mesa estándar de casino):** 6 mazos, el crupier se planta en cualquier 17 y mira su carta oculta con 10 o As, blackjack paga 3:2, se puede doblar con las dos primeras cartas (también después de separar), separar pares hasta 4 manos (los ases reciben una sola carta y no se vuelven a separar), seguro 2:1 cuando el crupier muestra As, sin rendición. Como en un casino online, el mazo se rebaraja en cada mano (contar cartas no sirve) y la partida guardada no contiene las próximas cartas ni la carta oculta del crupier: cada carta se saca al azar recién cuando hace falta.
+
+> Ojo: todo corre en el navegador, así que alguien con conocimientos técnicos podría modificar sus fichas. Para un casino "en serio" el azar y los saldos tendrían que vivir en un servidor.
 
 ## Cómo está armado (listo para multijugador)
 
