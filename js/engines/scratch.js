@@ -16,14 +16,15 @@
   var byId = {};
   SYMBOLS.forEach(function (s) { byId[s.id] = s; });
 
-  // Pesos sobre 10000. Retorno teórico = suma(peso * mult) / 10000 = 94%.
+  // Pesos sobre 10000. Retorno teórico = suma(peso * mult) / 10000 = 65% (como una raspadita de lotería real).
+  // Gana 1 de cada 5,5 cartones aprox. (18,09%).
   var OUTCOMES = [
-    { sym: 'clover', w: 1900 },
+    { sym: 'clover', w: 1200 },
     { sym: 'cherry', w: 500 },
-    { sym: 'bell', w: 150 },
-    { sym: 'star', w: 20 },
-    { sym: 'diamond', w: 3 },
-    { sym: null, w: 7427 }
+    { sym: 'bell', w: 100 },
+    { sym: 'star', w: 8 },
+    { sym: 'diamond', w: 1 },
+    { sym: null, w: 8191 }
   ];
   var CELLS = 6;
 

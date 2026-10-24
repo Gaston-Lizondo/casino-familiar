@@ -21,6 +21,24 @@ def chips(page, pid="dante"):
     return next(p["chips"] for p in json.loads(raw) if p["id"] == pid)
 
 
+def skip_insurance(page):
+    page.wait_for_timeout(300)
+    if page.locator(".bj-actions.two").is_visible():
+        page.click("button:has-text('No, gracias')")
+        page.wait_for_timeout(300)
+
+
+def inject_bj(page, cards, bet=100):
+    """Deja guardada una mano de blackjack con las cartas elegidas y vuelve a abrir la mesa."""
+    page.evaluate("""([cards, bet]) => { const BJ = CF.Blackjack; let t = BJ.createTable(['dante']);
+      t.shoe = Array.from({length: 300}, () => ({r: '2', s: '♠'}));
+      cards.slice().reverse().forEach(r => t.shoe.push({r, s: '♠'}));
+      t = BJ.startRound(t, null, {dante: bet});
+      localStorage.setItem('cf.v1.game.bj.dante', JSON.stringify({table: t, bet})); }""", [cards, bet])
+    page.reload(); page.wait_for_selector(".player-chip"); page.click(".player-chip:has-text('Dante')")
+    page.wait_for_selector(".tile"); page.click(".tile:has-text('Blackjack')")
+
+
 def shown(page):
     return int(page.inner_text(".chips-pill b").replace(".", "").replace(",", "").strip())
 
@@ -89,7 +107,8 @@ with sync_playwright() as p:
     page.click("button:has-text('Repartir')")
     page.wait_for_function("document.querySelectorAll('.bj-table .pcard').length >= 4", timeout=5000)
     page.wait_for_timeout(300)
-    in_round = page.locator(".bj-actions").is_visible()
+    skip_insurance(page)
+    in_round = page.locator(".bj-actions:not(.two)").is_visible()
     if in_round:
         check("mano en curso: carta oculta del crupier", page.locator(".pcard.back").count() == 1)
         page.screenshot(path=str(SHOTS / "6-blackjack-mano.png"))
@@ -97,7 +116,7 @@ with sync_playwright() as p:
         pre = chips(page)
         page.reload(); page.wait_for_selector(".player-chip"); page.click(".player-chip:has-text('Dante')")
         page.wait_for_selector(".tile"); page.click(".tile:has-text('Blackjack')")
-        page.wait_for_selector(".bj-actions", state="visible", timeout=5000)
+        page.wait_for_selector(".bj-actions:not(.two)", state="visible", timeout=5000)
         check("se retoma la mano tras recargar", page.locator(".pcard").count() >= 4 and chips(page) == pre)
         page.click("button:has-text('Plantarse')")
     page.wait_for_function("document.querySelector('button.big.mint') && getComputedStyle(document.querySelector('button.big.mint')).display !== 'none'", timeout=15000)
@@ -108,12 +127,37 @@ with sync_playwright() as p:
         page.click("button.big.mint")
         page.wait_for_timeout(250)
         for _ in range(8):
-            if page.locator(".bj-actions").is_visible():
+            skip_insurance(page)
+            if page.locator(".bj-actions:not(.two)").is_visible():
                 page.click("button:has-text('Plantarse')")
                 break
             page.wait_for_timeout(250)
         page.wait_for_function("getComputedStyle(document.querySelector('button.big.mint')).display !== 'none'", timeout=15000)
     check("varias manos: saldo coherente", shown(page) == chips(page), (shown(page), chips(page)))
+
+    # Separar + doblar: 8,8 contra 10,7 (mano 1: 8+3 dobla y saca 10; mano 2: 8+9 se planta)
+    inject_bj(page, ["8", "10", "8", "7", "3", "10", "9"])
+    page.wait_for_selector("button:has-text('Separar')", state="visible", timeout=5000)
+    pre = chips(page)
+    page.click("button:has-text('Separar')")
+    page.wait_for_function("document.querySelectorAll('.bj-hand').length === 2", timeout=4000)
+    page.screenshot(path=str(SHOTS / "8-blackjack-split.png"))
+    page.click("button:has-text('Doblar')")
+    page.wait_for_function("document.querySelector('.result-msg').textContent.includes('Mano 2')", timeout=4000)
+    page.click("button:has-text('Plantarse')")
+    page.wait_for_function("/Ganaste/.test(document.querySelector('.result-msg').textContent)", timeout=15000)
+    check("separar y doblar: +200 neto y saldo coherente", chips(page) == pre + 300 and shown(page) == chips(page), (pre, chips(page), shown(page)))
+    page.screenshot(path=str(SHOTS / "9-blackjack-split-fin.png"))
+
+    # Seguro: crupier con As y blackjack
+    inject_bj(page, ["K", "A", "9", "K"])
+    page.wait_for_selector(".bj-actions.two", state="visible", timeout=5000)
+    check("se ofrece seguro con As", "Seguro (50)" in page.inner_text(".bj-actions.two"))
+    page.screenshot(path=str(SHOTS / "10-blackjack-seguro.png"))
+    pre = chips(page)
+    page.click("button:has-text('Seguro (50)')")
+    page.wait_for_function("/mano/.test(document.querySelector('.result-msg').textContent)", timeout=15000)
+    check("seguro cobra 2:1 y queda a mano", chips(page) == pre + 100 and shown(page) == chips(page), (pre, chips(page), shown(page)))
 
     print("Dados")
     page.click(".icon-btn[aria-label='Volver']"); page.wait_for_selector(".tile")

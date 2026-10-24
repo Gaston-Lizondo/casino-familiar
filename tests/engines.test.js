@@ -7,6 +7,7 @@ const Dice = require('../js/engines/dice.js');
 const Scratch = require('../js/engines/scratch.js');
 const BJ = require('../js/engines/blackjack.js');
 const StoreLib = require('../js/core/store.js');
+const { decide: stratDecide } = require('./bj-strategy.js');
 
 let passed = 0;
 async function test(name, fn) {
@@ -87,12 +88,12 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg || ''}
   });
 
   console.log('Raspadita');
-  await test('retorno teórico 94% y la simulación lo respeta', () => {
-    near(Scratch.theoreticalRTP(), 0.94, 1e-9);
+  await test('retorno teórico 65% y la simulación lo respeta', () => {
+    near(Scratch.theoreticalRTP(), 0.65, 1e-9);
     const r = RNG.create(11); let bet = 0, ret = 0; const N = 300000;
     for (let i = 0; i < N; i++) { const c = Scratch.generate(r, 10); bet += 10; ret += c.payout; }
     console.log('      RTP simulado:', (ret / bet * 100).toFixed(2) + '%');
-    near(ret / bet, 0.94, 0.06, 'RTP');
+    near(ret / bet, 0.65, 0.06, 'RTP');
   });
   await test('cada cartón es consistente: nunca hay premios fantasma', () => {
     const r = RNG.create(5);
@@ -108,6 +109,20 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg || ''}
   });
 
   console.log('Blackjack');
+  const C = (r) => ({ r, s: '♠' });
+  const tableWith = (ids, ...cardsInPopOrder) => {          // arma un mazo donde se reparten exactamente esas cartas, en ese orden
+    const t = BJ.createTable(ids); t.shoe = Array.from({ length: 300 }, () => C('2'));
+    cardsInPopOrder.slice().reverse().forEach(r => t.shoe.push(C(r))); return t;
+  };
+  // Juega lo que falte de una ronda: nadie toma seguro, y cada mano usa la función de decisión.
+  const finish = (t, pick) => {
+    let guard = 0;
+    while (t.phase === 'insurance') t = BJ.act(t, t.seats.find(s => s.hands.length && s.insurance === null).id, 'noinsurance');
+    while (t.phase === 'player') { const s = BJ.currentSeat(t); t = BJ.act(t, s.id, pick(t, s)); assert.ok(++guard < 200); }
+    return t;
+  };
+  const strategy = (t, s) => stratDecide(BJ, t, s.id);
+
   await test('valores de mano', () => {
     const h = (...rs) => BJ.handValue(rs.map(r => ({ r, s: '♠' })));
     assert.ok(h('A', 'K').blackjack && h('A', 'K').total === 21);
@@ -117,71 +132,160 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg || ''}
     assert.strictEqual(h('A', '5', 'K').total, 16);
   });
   await test('doblar: cobra el doble y paga el doble', () => {
-    const rng = RNG.create(1);
-    let t = BJ.createTable(['p']);
-    const C = (r) => ({ r, s: '♠' });
-    t.shoe = Array.from({ length: 300 }, () => C('2'));
-    // pop() saca del final: jugador 5, crupier 10, jugador 6, crupier 7, luego un 10 para el doble
-    t.shoe.push(C('10'), C('7'), C('6'), C('10'), C('5'));
-    t = BJ.startRound(t, rng, { p: 100 });
+    // jugador 5+6, crupier 10+7, el doble trae un 10
+    let t = BJ.startRound(tableWith(['p'], '5', '10', '6', '7', '10'), RNG.create(1), { p: 100 });
     assert.strictEqual(t.phase, 'player');
     assert.ok(BJ.canDouble(t, 'p')); assert.strictEqual(BJ.extraBetRequired(t, 'p', 'double'), 100);
     t = BJ.act(t, 'p', 'double');
-    assert.strictEqual(t.phase, 'done'); assert.strictEqual(t.seats[0].bet, 200);
-    assert.strictEqual(t.seats[0].result, 'win'); assert.strictEqual(t.seats[0].payout, 400);
+    const s = t.seats[0];
+    assert.strictEqual(t.phase, 'done'); assert.strictEqual(s.wagered, 200);
+    assert.strictEqual(s.hands[0].result, 'win'); assert.strictEqual(s.payout, 400);
   });
   await test('blackjack natural paga 3:2 y empata si el crupier también lo tiene', () => {
-    const C = (r) => ({ r, s: '♠' });
-    const base = () => { const t = BJ.createTable(['p']); t.shoe = Array.from({ length: 300 }, () => C('2')); return t; };
     // jugador A,K ; crupier 9,8 -> pago 3:2
-    let t = base(); t.shoe.push(C('8'), C('K'), C('9'), C('A'));
-    t = BJ.startRound(t, RNG.create(1), { p: 100 });
-    assert.strictEqual(t.phase, 'done'); assert.strictEqual(t.seats[0].result, 'blackjack'); assert.strictEqual(t.seats[0].payout, 250);
-    // ambos blackjack -> empate
-    t = base(); t.shoe.push(C('K'), C('K'), C('A'), C('A'));
-    t = BJ.startRound(t, RNG.create(1), { p: 100 });
-    assert.strictEqual(t.seats[0].result, 'push'); assert.strictEqual(t.seats[0].payout, 100);
-    // crupier blackjack, jugador 20 -> pierde
-    t = base(); t.shoe.push(C('K'), C('K'), C('A'), C('K'));
-    t = BJ.startRound(t, RNG.create(1), { p: 100 });
-    assert.strictEqual(t.phase, 'done'); assert.strictEqual(t.seats[0].result, 'lose'); assert.strictEqual(t.seats[0].payout, 0);
+    let t = BJ.startRound(tableWith(['p'], 'A', '9', 'K', '8'), RNG.create(1), { p: 100 });
+    assert.strictEqual(t.phase, 'done'); assert.strictEqual(t.seats[0].hands[0].result, 'blackjack'); assert.strictEqual(t.seats[0].payout, 250);
+    // crupier K,A (blackjack) y jugador K,A -> empate
+    t = BJ.startRound(tableWith(['p'], 'K', 'K', 'A', 'A'), RNG.create(1), { p: 100 });
+    assert.strictEqual(t.phase, 'done'); assert.strictEqual(t.seats[0].hands[0].result, 'push'); assert.strictEqual(t.seats[0].payout, 100);
+    // crupier 10,A mirando -> con blackjack, jugador K,K pierde
+    t = BJ.startRound(tableWith(['p'], 'K', 'K', 'K', 'A'), RNG.create(1), { p: 100 });
+    assert.strictEqual(t.phase, 'done'); assert.strictEqual(t.seats[0].hands[0].result, 'lose'); assert.strictEqual(t.seats[0].payout, 0);
+  });
+  await test('separar: cada mano paga aparte, doblar después de separar, 21 paga 1:1', () => {
+    // jugador 8,8 vs crupier 10,7. Mano 1: 8+3, dobla y saca 10 (21). Mano 2: 8+9=17 y se planta.
+    let t = BJ.startRound(tableWith(['p'], '8', '10', '8', '7', '3', '10', '9'), RNG.create(1), { p: 100 });
+    assert.ok(BJ.canSplit(t, 'p')); assert.strictEqual(BJ.extraBetRequired(t, 'p', 'split'), 100);
+    t = BJ.act(t, 'p', 'split');
+    assert.strictEqual(t.seats[0].hands.length, 2);
+    assert.ok(BJ.canDouble(t, 'p'));
+    t = BJ.act(t, 'p', 'double');
+    assert.strictEqual(t.phase, 'player');                           // falta la segunda mano
+    assert.deepStrictEqual(BJ.currentHand(t).cards.map(c => c.r), ['8', '9']);
+    t = BJ.act(t, 'p', 'stand');
+    const s = t.seats[0];
+    assert.strictEqual(t.phase, 'done');
+    assert.strictEqual(s.hands[0].result, 'win'); assert.strictEqual(s.hands[0].payout, 400);   // 21 con 200 apostados: 1:1
+    assert.strictEqual(s.hands[1].result, 'push'); assert.strictEqual(s.hands[1].payout, 100);  // 17 contra 17
+    assert.strictEqual(s.wagered, 300); assert.strictEqual(s.payout, 500);
+  });
+  await test('ases separados: una carta por mano, sin volver a separar, pagan 1:1', () => {
+    // A,A vs 9,7. Recibe K (21) y 5 (A+5). El crupier (16) saca un 10 y se pasa.
+    let t = BJ.startRound(tableWith(['p'], 'A', '9', 'A', '7', 'K', '5', '10'), RNG.create(1), { p: 100 });
+    t = BJ.act(t, 'p', 'split');
+    const s = t.seats[0];
+    assert.strictEqual(t.phase, 'done');
+    assert.deepStrictEqual(s.hands.map(x => x.cards.length), [2, 2]);
+    assert.deepStrictEqual(s.hands.map(x => x.result), ['win', 'win']);
+    assert.strictEqual(s.payout, 400);
+    // Si el as separado recibe otro as, tampoco se vuelve a separar: la ronda termina enseguida
+    t = BJ.startRound(tableWith(['p'], 'A', '9', 'A', '7', 'A', 'A', '10'), RNG.create(1), { p: 100 });
+    t = BJ.act(t, 'p', 'split');
+    assert.strictEqual(t.phase, 'done'); assert.strictEqual(t.seats[0].hands.length, 2);
+  });
+  await test('máximo 4 manos al separar', () => {
+    let t = BJ.createTable(['p']); t.shoe = Array.from({ length: 300 }, () => C('8'));
+    ['8', '10', '8', '7'].reverse().forEach(r => t.shoe.push(C(r)));
+    t = BJ.startRound(t, RNG.create(1), { p: 10 });
+    let splits = 0;
+    while (BJ.canSplit(t, 'p')) { t = BJ.act(t, 'p', 'split'); splits++; assert.ok(splits <= 3); }
+    assert.strictEqual(splits, 3); assert.strictEqual(t.seats[0].hands.length, 4);
+    assert.throws(() => BJ.act(t, 'p', 'split'));
+    t = finish(t, () => 'stand');
+    assert.strictEqual(t.phase, 'done'); assert.strictEqual(t.seats[0].wagered, 40);
+  });
+  await test('seguro: cuesta la mitad, paga 2:1 si el crupier tiene blackjack', () => {
+    // jugador K,9 ; crupier A,K (blackjack). Con seguro: pierde la mano y cobra el seguro -> queda a mano.
+    let t = BJ.startRound(tableWith(['p'], 'K', 'A', '9', 'K'), RNG.create(1), { p: 100 });
+    assert.strictEqual(t.phase, 'insurance'); assert.ok(BJ.canInsure(t, 'p')); assert.strictEqual(BJ.extraBetRequired(t, 'p', 'insurance'), 50);
+    t = BJ.act(t, 'p', 'insurance');
+    assert.strictEqual(t.phase, 'done'); assert.strictEqual(t.seats[0].hands[0].result, 'lose');
+    assert.strictEqual(t.seats[0].payout, 150); assert.strictEqual(t.seats[0].wagered, 150);
+    // Sin seguro, pierde los 100
+    t = BJ.startRound(tableWith(['p'], 'K', 'A', '9', 'K'), RNG.create(1), { p: 100 });
+    t = BJ.act(t, 'p', 'noinsurance');
+    assert.strictEqual(t.phase, 'done'); assert.strictEqual(t.seats[0].payout, 0);
+    // Crupier A,6 (sin blackjack): el seguro se pierde y la mano sigue
+    t = BJ.startRound(tableWith(['p'], '10', 'A', '9', '6'), RNG.create(1), { p: 100 });
+    t = BJ.act(t, 'p', 'insurance');
+    assert.strictEqual(t.phase, 'player'); assert.strictEqual(BJ.canInsure(t, 'p'), false);
+    t = BJ.act(t, 'p', 'stand');                                    // 19 contra 17 blando
+    const s = t.seats[0];
+    assert.strictEqual(s.payout, 200); assert.strictEqual(s.wagered, 150); assert.strictEqual(s.insPayout, 0);
+  });
+  await test('blackjack del jugador con As del crupier: sin seguro cobra 3:2', () => {
+    let t = BJ.startRound(tableWith(['p'], 'A', 'A', 'K', '9'), RNG.create(1), { p: 100 });
+    assert.strictEqual(t.phase, 'insurance');
+    t = BJ.act(t, 'p', 'noinsurance');
+    assert.strictEqual(t.phase, 'done'); assert.strictEqual(t.seats[0].hands[0].result, 'blackjack'); assert.strictEqual(t.seats[0].payout, 250);
   });
   await test('es inmutable: act() no modifica la mesa original', () => {
     const rng = RNG.create(3); let t = BJ.createTable(['p']);
-    t = BJ.startRound(t, rng, { p: 10 });
-    if (t.phase === 'player') { const snap = JSON.stringify(t); BJ.act(t, 'p', 'hit'); assert.strictEqual(JSON.stringify(t), snap); }
-  });
-  await test('multi-asiento: turnos en orden y liquidación correcta', () => {
-    const rng = RNG.create(9); let t = BJ.createTable(['a', 'b', 'c']);
-    for (let round = 0; round < 500; round++) {
-      t = BJ.startRound(t, rng, { a: 10, b: 20, c: 0 });
-      assert.strictEqual(t.seats[2].status, 'idle');
-      let guard = 0;
-      while (t.phase === 'player') {
-        const seat = BJ.currentSeat(t); assert.ok(seat && seat.status === 'playing');
-        t = BJ.act(t, seat.id, BJ.handValue(seat.cards).total < 17 ? 'hit' : 'stand');
-        assert.ok(++guard < 50);
-      }
-      assert.strictEqual(t.phase, 'done');
-      t.seats.forEach(s => { if (s.bet > 0) assert.ok(['win', 'lose', 'push', 'blackjack'].includes(s.result)); });
-    }
-  });
-  await test('simulación (60k manos): estrategia "imitar al crupier" ≈ 94% y las cuentas cierran', () => {
-    const rng = RNG.create(2024); let t = BJ.createTable(['p']); let bet = 0, ret = 0; const N = 60000;
-    for (let i = 0; i < N; i++) {
+    for (let i = 0; i < 20; i++) {
       t = BJ.startRound(t, rng, { p: 10 });
-      while (t.phase === 'player') { const s = BJ.currentSeat(t); t = BJ.act(t, 'p', BJ.handValue(s.cards).total < 17 ? 'hit' : 'stand'); }
-      bet += t.seats[0].bet; ret += t.seats[0].payout;
-      assert.ok(t.shoe.length >= 0);
+      if (t.phase === 'insurance') { const snap = JSON.stringify(t); BJ.act(t, 'p', 'insurance'); assert.strictEqual(JSON.stringify(t), snap); t = BJ.act(t, 'p', 'noinsurance'); }
+      if (t.phase === 'player') { const snap = JSON.stringify(t); BJ.act(t, 'p', 'hit'); assert.strictEqual(JSON.stringify(t), snap); }
+      t = finish(t, () => 'stand');
     }
-    console.log('      RTP simulado:', (ret / bet * 100).toFixed(2) + '%');
-    assert.ok(ret / bet > 0.90 && ret / bet < 0.99, ret / bet);
+  });
+  await test('mesas guardadas con el formato anterior se migran', () => {
+    const old = { v: 1, phase: 'player', decks: 6, shoe: [C('5')], dealer: [C('10'), C('7')], turn: 0, round: 3,
+      seats: [{ id: 'p', bet: 50, cards: [C('9'), C('10')], status: 'playing', doubled: false, result: null, payout: 0 }] };
+    const t = BJ.migrate(old);
+    assert.strictEqual(t.v, BJ.VERSION); assert.strictEqual(t.seats[0].hands[0].bet, 50);
+    const done = BJ.act(t, 'p', 'stand'); assert.strictEqual(done.phase, 'done'); assert.strictEqual(done.seats[0].hands[0].result, 'win');
+    assert.strictEqual(BJ.migrate({ v: 99 }), null);
+  });
+  await test('multi-asiento con todas las acciones al azar: turnos y cuentas siempre cierran', () => {
+    const rng = RNG.create(9); let t = BJ.createTable(['a', 'b', 'c']);
+    for (let round = 0; round < 1500; round++) {
+      t = BJ.startRound(t, rng, { a: 10, b: 20, c: 0 });
+      assert.strictEqual(t.seats[2].hands.length, 0);
+      let guard = 0;
+      while (t.phase !== 'done') {
+        if (t.phase === 'insurance') {
+          const s = t.seats.find(x => x.hands.length && x.insurance === null);
+          t = BJ.act(t, s.id, rng.int(2) ? 'insurance' : 'noinsurance');
+        } else {
+          const s = BJ.currentSeat(t); assert.ok(s && BJ.currentHand(t).status === 'playing');
+          const opts = ['hit', 'stand']; if (BJ.canDouble(t, s.id)) opts.push('double'); if (BJ.canSplit(t, s.id)) opts.push('split');
+          t = BJ.act(t, s.id, rng.pick(opts));
+        }
+        assert.ok(++guard < 300);
+      }
+      t.seats.forEach(s => {
+        if (!s.hands.length) return;
+        assert.ok(s.hands.length <= BJ.MAX_HANDS);
+        let pay = 0, bets = 0;
+        s.hands.forEach(hd => {
+          assert.ok(['win', 'lose', 'push', 'blackjack'].includes(hd.result));
+          const want = { lose: 0, push: hd.bet, win: hd.bet * 2, blackjack: hd.bet + Math.floor(hd.bet * 1.5) }[hd.result];
+          assert.strictEqual(hd.payout, want); pay += hd.payout; bets += hd.bet;
+        });
+        assert.strictEqual(s.payout, pay + s.insPayout); assert.strictEqual(s.wagered, bets + (s.insurance || 0));
+      });
+      assert.ok(t.shoe.length > 0);
+    }
+  });
+  await test('simulación (80k manos): estrategia básica ≈ 99,5% (la casa siempre gana por poco); "como el crupier" ≈ 94%', () => {
+    const run = (pick, N, seed) => {
+      const rng = RNG.create(seed); let t = BJ.createTable(['p']), wag = 0, ret = 0;
+      for (let i = 0; i < N; i++) {
+        t = finish(BJ.startRound(t, rng, { p: 10 }), pick);
+        wag += t.seats[0].wagered - (t.seats[0].insurance || 0); ret += t.seats[0].payout;
+      }
+      return ret / wag;
+    };
+    const basic = run(strategy, 80000, 2024);
+    const mimic = run((t, s) => BJ.handValue(BJ.currentHand(t).cards).total < 17 ? 'hit' : 'stand', 60000, 7);
+    console.log('      RTP estrategia básica:', (basic * 100).toFixed(2) + '%  |  como el crupier:', (mimic * 100).toFixed(2) + '%');
+    assert.ok(basic > 0.97 && basic < 1.015, basic);
+    assert.ok(mimic > 0.90 && mimic < 0.985, mimic);
   });
   await test('el mazo se rebaraja y nunca se queda sin cartas', () => {
     const rng = RNG.create(77); let t = BJ.createTable(['p']); let reshuffles = 0, prev = 0;
     for (let i = 0; i < 400; i++) {
-      t = BJ.startRound(t, rng, { p: 10 });
-      while (t.phase === 'player') t = BJ.act(t, 'p', 'hit');
+      t = finish(BJ.startRound(t, rng, { p: 10 }), () => 'hit');
       if (t.shoe.length > prev + 100) reshuffles++;
       prev = t.shoe.length;
     }

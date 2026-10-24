@@ -45,11 +45,13 @@ Fichas iniciales, PIN, valores de apuesta (10/50/100/500) y los jugadores inicia
 |---|---|
 | Tragamonedas | 96,1 % |
 | Ruleta | 97,3 % (todas las apuestas) |
-| Blackjack | ~94 % jugando "como el crupier"; mejor con buena estrategia |
+| Blackjack | 99,5 % con estrategia básica perfecta; ~94 % jugando "como el crupier" |
 | Dados | 95,0 % – 95,8 % |
-| Raspadita | 94,0 % |
+| Raspadita | 65,0 % (como una raspadita de lotería real) |
 
-Verificado con simulaciones (`node tests/engines.test.js`). A la larga la casa siempre gana un poquito, como en un casino de verdad.
+Verificado con simulaciones (`node tests/engines.test.js`). A la larga la casa siempre gana, como en un casino de verdad: ningún juego devuelve el 100 %.
+
+**Reglas del blackjack (mesa estándar de casino):** 6 mazos, el crupier se planta en cualquier 17 y mira su carta oculta con 10 o As, blackjack paga 3:2, se puede doblar con las dos primeras cartas (también después de separar), separar pares hasta 4 manos (los ases reciben una sola carta y no se vuelven a separar), seguro 2:1 cuando el crupier muestra As, sin rendición.
 
 ## Cómo está armado (listo para multijugador)
 
