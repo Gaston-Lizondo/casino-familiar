@@ -70,7 +70,7 @@
     else { left = h('span', { class: 'top-spacer' }); title = ''; }
     if (inPlay) {
       chipsEl = h('b', null, fmt(S.shown));
-      right.push(h('div', { class: 'chips-pill', title: 'Tus fichas' }, h('span', { class: 'coin' }, '🪙'), chipsEl));
+      right.push(h('div', { class: 'chips-pill', title: 'Tus fichas' }, h('span', { class: 'coin' }), chipsEl));
     }
     right.push(muteBtn());
     topEl.replaceChildren(left, h('div', { class: 'top-title neon' }, title || ''), h('div', { class: 'top-right' }, right));
@@ -94,37 +94,41 @@
     var token = S.nav;
     var list = await store.listProfiles();
     if (token !== S.nav) return;
-    var cards = list.map(function (p) {
+    // Cada jugador es una ficha de casino de su color.
+    var chipsList = list.map(function (p) {
       return h('button', {
-        class: 'profile-card', style: { '--c': p.color }, onClick: function () { SFX.play('click'); S.profile = p; S.chips = p.chips; go('lobby'); }
+        class: 'player-chip', style: { '--c': p.color }, 'aria-label': p.name + ', ' + fmt(p.chips) + ' fichas',
+        onClick: function () { SFX.play('chip'); S.profile = p; S.chips = p.chips; go('lobby'); }
       },
-        h('div', { class: 'avatar' }, p.emoji),
-        h('div', { class: 'pname' }, p.name),
-        h('div', { class: 'pchips' }, '🪙 ' + fmt(p.chips)));
+        h('span', { class: 'pc-face' },
+          h('span', { class: 'pc-avatar' }, p.emoji),
+          h('span', { class: 'pc-name' }, p.name),
+          h('span', { class: 'pc-chips' }, h('span', { class: 'coin' }), fmt(p.chips))));
     });
     appEl.append(h('section', { class: 'screen center' },
-      h('h1', { class: 'logo neon' }, 'CASINO', h('br'), h('span', null, 'FAMILIAR')),
-      h('p', { class: 'sub' }, '¿Quién juega?'),
-      h('div', { class: 'profile-grid' }, cards),
-      memoryOnly ? h('p', { class: 'warn' }, '⚠️ Tu navegador no deja guardar datos: las fichas se pierden al cerrar.') : null,
-      h('p', { class: 'footer-note' }, '🪙 Fichas de mentira · Solo diversión · Sin dinero real'),
+      h('h1', { class: 'sign', 'aria-label': 'Casino Familiar' }, h('span', { class: 'sign-script' }, 'Casino'), h('span', { class: 'sign-sub' }, 'Familiar')),
+      h('p', { class: 'sub' }, 'Elegí tu ficha para jugar'),
+      h('div', { class: 'player-grid' }, chipsList),
+      memoryOnly ? h('p', { class: 'warn' }, 'Tu navegador no deja guardar datos: las fichas se pierden al cerrar.') : null,
+      h('p', { class: 'footer-note' }, 'Fichas de mentira, sin dinero real: solo diversión.'),
       h('button', { class: 'btn ghost small', onClick: openAdmin }, '⚙️ Admin')));
   }
 
   // ---------- Lobby ----------
   function renderLobby() {
     var p = S.profile;
-    var cards = CF.Games.map(function (g) {
-      return h('button', { class: 'game-card ' + g.color, onClick: function () { SFX.play('click'); go('game', g.id); } },
-        h('div', { class: 'gicon' }, g.icon),
-        h('div', { class: 'gtext' }, h('div', { class: 'gname' }, g.name), h('div', { class: 'gdesc' }, g.desc)),
-        h('div', { class: 'garrow' }, '›'));
+    // El primer juego (tragamonedas) ocupa todo el ancho con marco de bombitas; el resto va de a dos.
+    var tiles = CF.Games.map(function (g, i) {
+      return h('button', { class: 'tile ' + g.color + (i === 0 ? ' wide' : ''), onClick: function () { SFX.play('click'); go('game', g.id); } },
+        h('span', { class: 'tile-icon' }, g.icon),
+        h('span', { class: 'tile-name' }, g.name),
+        h('span', { class: 'tile-desc' }, g.desc));
     });
     appEl.append(h('section', { class: 'screen' },
-      h('div', { class: 'hello' }, h('span', { class: 'avatar sm', style: { '--c': p.color } }, p.emoji), h('div', null, h('div', { class: 'hi' }, 'Hola, ' + p.name + ' 👋'), h('div', { class: 'sub left' }, 'Elegí un juego'))),
-      S.chips <= 0 ? h('div', { class: 'banner' }, '😅 Te quedaste sin fichas. Pedile a quien administra que te reponga desde ⚙️ Admin.') : null,
-      h('div', { class: 'game-list' }, cards),
-      h('p', { class: 'footer-note' }, '🪙 Fichas de mentira · Solo diversión · Sin dinero real')));
+      h('div', { class: 'hello' }, h('span', { class: 'avatar-mini', style: { '--c': p.color } }, p.emoji), h('div', null, h('div', { class: 'hi' }, 'Hola, ' + p.name), h('div', { class: 'sub left' }, 'Elegí una mesa'))),
+      S.chips <= 0 ? h('div', { class: 'banner' }, 'Te quedaste sin fichas. Pedile a quien administra que te reponga desde ⚙️ Admin.') : null,
+      h('div', { class: 'bento' }, tiles),
+      h('p', { class: 'footer-note' }, 'Fichas de mentira, sin dinero real: solo diversión.')));
   }
 
   // ---------- Juego ----------
@@ -133,7 +137,7 @@
     var wrap = h('div', { class: 'game game-' + g.id });
     appEl.append(wrap);
     var cleanup = g.mount({
-      el: wrap, wallet: wallet, sfx: SFX, config: Cfg, store: store,
+      el: wrap, wallet: wallet, sfx: SFX, fx: CF.FX, config: Cfg, store: store,
       profile: { id: S.profile.id, name: S.profile.name, emoji: S.profile.emoji },
       loadGame: function (k) { return store.loadGame(k); },
       saveGame: function (k, v) { return store.saveGame(k, v); }
@@ -150,7 +154,7 @@
   }
 
   var EMOJIS = ['🧔', '👩', '👦', '👧', '👴', '👵', '🧑', '👨', '🐶', '🦊', '🐼', '🦄'];
-  var COLORS = ['#00e5ff', '#ff2bd6', '#c6ff00', '#ffd400', '#8a4dff', '#ff6a2b'];
+  var COLORS = ['#3df5ff', '#ff3d9a', '#3dffa0', '#ffc94a', '#b58cff', '#ff7a45'];
 
   async function renderAdmin() {
     var token = S.nav;
@@ -159,7 +163,7 @@
     var rows = list.map(function (p) {
       function add(n) { return h('button', { class: 'btn small cyan', onClick: async function () { await store.adjustChips(p.id, n); SFX.play('chip'); refresh(); } }, '+' + fmt(n)); }
       return h('div', { class: 'admin-row' },
-        h('div', { class: 'ar-head' }, h('span', { class: 'avatar sm', style: { '--c': p.color } }, p.emoji), h('b', null, p.name), h('span', { class: 'ar-chips' }, '🪙 ' + fmt(p.chips))),
+        h('div', { class: 'ar-head' }, h('span', { class: 'avatar-mini', style: { '--c': p.color } }, p.emoji), h('b', null, p.name), h('span', { class: 'ar-chips' }, h('span', { class: 'coin' }), fmt(p.chips))),
         h('div', { class: 'ar-actions' },
           add(100), add(500), add(1000),
           h('button', { class: 'btn small', onClick: async function () {

@@ -3,7 +3,7 @@
   'use strict';
   var CF = window.CF, h = CF.h, fmt = CF.fmt, SC = CF.Scratch;
 
-  CF.Games.push({ id: 'scratch', name: 'Raspadita', icon: '🎟️', desc: 'Encontrá 3 iguales · paga hasta x200', color: 'purple', mount: mount });
+  CF.Games.push({ id: 'scratch', name: 'Raspadita', icon: '🎟️', desc: 'Encontrá tres iguales. Paga hasta x200', color: 'violet', mount: mount });
 
   var W = 480, H = 320;
 
@@ -14,14 +14,15 @@
     var grid = h('div', { class: 'scratch-grid' });
     var canvas = h('canvas', { class: 'scratch-canvas', width: W, height: H });
     var stage = h('div', { class: 'scratch-stage' }, grid, canvas);
+    var ticket = h('div', { class: 'ticket' }, h('h2', { class: 'ticket-title' }, 'La Raspadita'), stage);
     var msg = h('div', { class: 'result-msg' }, 'Comprá una raspadita y rascá');
     var picker = CF.betPicker({ bets: ctx.config.bets, value: bet, label: 'Precio', onChange: function (v) { bet = v; } });
-    var buyBtn = h('button', { class: 'btn big purple', onClick: buy }, 'COMPRAR');
-    var allBtn = h('button', { class: 'btn', onClick: function () { reveal(true); } }, '✨ Rascar todo');
+    var buyBtn = h('button', { class: 'btn big violet', onClick: buy }, 'Comprar');
+    var allBtn = h('button', { class: 'btn gold', onClick: function () { reveal(true); } }, 'Rascar todo');
     allBtn.style.display = 'none';
     var legend = h('div', { class: 'scratch-legend' }, SC.SYMBOLS.map(function (s) { return h('span', null, s.icon + ' x' + s.mult); }));
 
-    ctx.el.append(stage, msg, legend, picker.el, buyBtn, allBtn);
+    ctx.el.append(ticket, msg, legend, picker.el, buyBtn, allBtn);
     renderIdle();
 
     function renderIdle() {
@@ -33,12 +34,14 @@
       var c = canvas.getContext('2d');
       c.globalCompositeOperation = 'source-over';
       var g = c.createLinearGradient(0, 0, W, H);
-      g.addColorStop(0, '#c9ccd8'); g.addColorStop(0.5, '#eef0f8'); g.addColorStop(1, '#a9adbf');
+      g.addColorStop(0, '#d9d2c0'); g.addColorStop(0.5, '#fbf3d8'); g.addColorStop(1, '#b9ad8c');
       c.fillStyle = g; c.fillRect(0, 0, W, H);
-      c.fillStyle = 'rgba(80,60,160,.18)';
-      for (var i = 0; i < 160; i++) { c.beginPath(); c.arc(rng.next() * W, rng.next() * H, 1 + rng.next() * 3, 0, 6.3); c.fill(); }
-      c.fillStyle = 'rgba(70,50,150,.55)'; c.font = 'bold 34px Orbitron, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.fillText('RASCÁ ACÁ', W / 2, H / 2 - 18); c.font = 'bold 22px Rubik, sans-serif'; c.fillText('✦ ✦ ✦', W / 2, H / 2 + 28);
+      c.strokeStyle = 'rgba(120,90,30,.16)'; c.lineWidth = 2;
+      for (var d = -H; d < W; d += 16) { c.beginPath(); c.moveTo(d, H); c.lineTo(d + H, 0); c.stroke(); }
+      c.fillStyle = 'rgba(255,255,255,.55)';
+      for (var i = 0; i < 90; i++) { c.beginPath(); c.arc(rng.next() * W, rng.next() * H, 1 + rng.next() * 2.5, 0, 6.3); c.fill(); }
+      c.fillStyle = 'rgba(90,60,10,.6)'; c.font = '78px Yellowtail, cursive'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText('¡Rascá acá!', W / 2, H / 2);
       canvas.style.display = ''; canvas.style.opacity = '1';
     }
 
@@ -54,7 +57,7 @@
         var s = SC.byId[id]; return h('div', { class: 'scell', 'data-id': id }, h('span', { class: 'si' }, s.icon), h('small', null, 'x' + s.mult));
       }));
       revealed = false; moves = 0; coverCanvas();
-      msg.className = 'result-msg'; msg.textContent = '¡Rascá con el dedo! Hay premio si hay 3 iguales';
+      msg.className = 'result-msg'; msg.textContent = 'Rascá con el dedo. Hay premio si hay tres iguales';
       ctx.sfx.play('card'); allBtn.style.display = '';
     }
 
@@ -82,9 +85,10 @@
       setTimeout(function () { canvas.style.display = 'none'; }, 450);
       if (card.win) {
         Array.prototype.forEach.call(grid.children, function (el) { if (el.getAttribute('data-id') === card.symbol) el.classList.add('hit'); });
-        msg.className = 'result-msg win'; msg.textContent = '🎉 ¡3 ' + SC.byId[card.symbol].icon + '! Ganaste +' + fmt(card.payout - card.bet) + ' 🪙';
+        msg.className = 'result-msg win'; msg.textContent = '¡Tres ' + SC.byId[card.symbol].icon + '! Ganaste +' + fmt(card.payout - card.bet) + ' 🪙';
         ctx.sfx.play(card.mult >= 10 ? 'bigwin' : 'win');
-      } else { msg.className = 'result-msg lose'; msg.textContent = 'Ningún premio… ¡probá otra!'; ctx.sfx.play('lose'); }
+        if (card.mult >= 10) ctx.fx.rain(2600); else ctx.fx.burst({ count: 50, coins: true, y: window.innerHeight * 0.4 });
+      } else { msg.className = 'result-msg lose'; msg.textContent = 'Ningún premio. ¡Probá otra!'; ctx.sfx.play('lose'); }
       ctx.wallet.release();
       busy = false; buyBtn.disabled = false; picker.setDisabled(false);
     }

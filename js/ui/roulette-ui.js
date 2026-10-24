@@ -3,38 +3,48 @@
   'use strict';
   var CF = window.CF, h = CF.h, fmt = CF.fmt, sleep = CF.sleep, R = CF.Roulette;
 
-  CF.Games.push({ id: 'roulette', name: 'Ruleta', icon: '🎡', desc: 'Número, color, docena… paga hasta x36', color: 'cyan', mount: mount });
+  CF.Games.push({ id: 'roulette', name: 'Ruleta', icon: '🎡', desc: 'Número, color o docena. Paga hasta x36', color: 'cyan', mount: mount });
 
-  var FILL = { red: '#ff2b6a', black: '#16162a', green: '#00c46a' };
+  var FILL = { red: '#c4143f', black: '#1b0f2a', green: '#0e9b5e' };
+  var SIZE = 252;
 
-  function drawWheel(canvas, size) {
-    var dpr = 2, c = canvas.getContext('2d'), half = size / 2, seg = Math.PI * 2 / 37;
-    canvas.width = canvas.height = size * dpr; c.scale(dpr, dpr);
+  function drawWheel(canvas) {
+    var dpr = 2, c = canvas.getContext('2d'), half = SIZE / 2, seg = Math.PI * 2 / 37;
+    canvas.width = canvas.height = SIZE * dpr; c.scale(dpr, dpr);
+    canvas.style.width = canvas.style.height = SIZE + 'px';
+    // aro dorado exterior
+    var rim = c.createLinearGradient(0, 0, SIZE, SIZE);
+    rim.addColorStop(0, '#ffe58f'); rim.addColorStop(0.5, '#b8801a'); rim.addColorStop(1, '#ffe58f');
+    c.beginPath(); c.arc(half, half, half - 1, 0, Math.PI * 2); c.fillStyle = rim; c.fill();
     for (var i = 0; i < 37; i++) {
       var n = R.WHEEL[i], a0 = -Math.PI / 2 + i * seg, a1 = a0 + seg;
-      c.beginPath(); c.moveTo(half, half); c.arc(half, half, half - 4, a0, a1); c.closePath();
+      c.beginPath(); c.moveTo(half, half); c.arc(half, half, half - 11, a0, a1); c.closePath();
       c.fillStyle = FILL[R.colorOf(n)]; c.fill();
-      c.strokeStyle = 'rgba(255,255,255,.25)'; c.lineWidth = 1; c.stroke();
-      c.save(); c.translate(half, half); c.rotate(a0 + seg / 2); c.translate(half - 22, 0); c.rotate(Math.PI / 2);
-      c.fillStyle = '#fff'; c.font = 'bold 11px Rubik, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.strokeStyle = 'rgba(255, 229, 143, .55)'; c.lineWidth = 1; c.stroke();
+      c.save(); c.translate(half, half); c.rotate(a0 + seg / 2); c.translate(half - 31, 0); c.rotate(Math.PI / 2);
+      c.fillStyle = '#fff4dc'; c.font = '800 11px Figtree, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillText(String(n), 0, 0); c.restore();
     }
-    c.beginPath(); c.arc(half, half, half - 4, 0, Math.PI * 2); c.strokeStyle = '#00e5ff'; c.lineWidth = 3; c.stroke();
-    c.beginPath(); c.arc(half, half, half * 0.52, 0, Math.PI * 2); c.fillStyle = '#0a0a18'; c.fill();
-    c.strokeStyle = '#ff2bd6'; c.lineWidth = 3; c.stroke();
-    c.beginPath(); c.arc(half, half, half * 0.18, 0, Math.PI * 2); c.fillStyle = '#ffd400'; c.fill();
+    // centro: platillo oscuro y torreta dorada
+    c.beginPath(); c.arc(half, half, half * 0.5, 0, Math.PI * 2); c.fillStyle = '#12041c'; c.fill();
+    c.lineWidth = 3; c.strokeStyle = '#ffc94a'; c.stroke();
+    c.strokeStyle = 'rgba(255, 201, 74, .5)'; c.lineWidth = 3;
+    for (var k = 0; k < 4; k++) { var a = k * Math.PI / 2 + Math.PI / 4; c.beginPath(); c.moveTo(half + Math.cos(a) * 14, half + Math.sin(a) * 14); c.lineTo(half + Math.cos(a) * half * 0.44, half + Math.sin(a) * half * 0.44); c.stroke(); }
+    var g = c.createRadialGradient(half - 4, half - 4, 2, half, half, 16);
+    g.addColorStop(0, '#fff1b8'); g.addColorStop(1, '#b8801a');
+    c.beginPath(); c.arc(half, half, 16, 0, Math.PI * 2); c.fillStyle = g; c.fill();
   }
 
   function mount(ctx) {
     var rng = CF.RNG.create();
-    var chip = ctx.config.bets[0], placed = [], lastBets = [], busy = false, rot = 0, history = [], alive = true;
+    var chip = ctx.config.bets[0], placed = [], lastBets = [], busy = false, rot = 0, ballRot = 0, history = [], alive = true;
     var badges = {};
 
     // --- Rueda
     var canvas = h('canvas', { class: 'wheel' });
-    drawWheel(canvas, 240);
-    canvas.style.width = canvas.style.height = '240px';
-    var wheelWrap = h('div', { class: 'wheel-wrap' }, canvas, h('div', { class: 'wheel-pointer' }));
+    drawWheel(canvas);
+    var ball = h('div', { class: 'ball-orbit' }, h('div', { class: 'ball' }));
+    var wheelWrap = h('div', { class: 'wheel-wrap' }, canvas, ball, h('div', { class: 'wheel-pointer' }));
     var resultEl = h('div', { class: 'result-msg' }, 'Poné tus fichas en la mesa');
     var histEl = h('div', { class: 'history' });
 
@@ -50,23 +60,23 @@
       var n = r * 3 + k;
       nums.appendChild(cell({ type: 'straight', n: n }, String(n), R.colorOf(n)));
     }
-    var cols = h('div', { class: 'row3' }, [1, 2, 3].map(function (k) { return cell({ type: 'column', n: k }, 'Col ' + k + ' · 2:1', 'out'); }));
-    var dozens = h('div', { class: 'row3' }, [1, 2, 3].map(function (k) { return cell({ type: 'dozen', n: k }, ['1–12', '13–24', '25–36'][k - 1] + ' · 2:1', 'out'); }));
+    var cols = h('div', { class: 'row3' }, [1, 2, 3].map(function (k) { return cell({ type: 'column', n: k }, 'Columna ' + k + ' (x3)', 'out'); }));
+    var dozens = h('div', { class: 'row3' }, [1, 2, 3].map(function (k) { return cell({ type: 'dozen', n: k }, ['1 a 12', '13 a 24', '25 a 36'][k - 1] + ' (x3)', 'out'); }));
     var outs = h('div', { class: 'row3' },
-      cell({ type: 'low' }, '1–18', 'out'), cell({ type: 'even' }, 'Par', 'out'), cell({ type: 'red' }, '🔴 Rojo', 'out redbtn'),
-      cell({ type: 'black' }, '⚫ Negro', 'out blackbtn'), cell({ type: 'odd' }, 'Impar', 'out'), cell({ type: 'high' }, '19–36', 'out'));
+      cell({ type: 'low' }, '1 a 18', 'out'), cell({ type: 'even' }, 'Par', 'out'), cell({ type: 'red' }, '🔴 Rojo', 'out redbtn'),
+      cell({ type: 'black' }, '⚫ Negro', 'out blackbtn'), cell({ type: 'odd' }, 'Impar', 'out'), cell({ type: 'high' }, '19 a 36', 'out'));
     var boardEl = h('div', { class: 'board' }, board, nums, cols, dozens, outs);
 
     // --- Controles
     var picker = CF.betPicker({ bets: ctx.config.bets, value: chip, label: 'Ficha', onChange: function (v) { chip = v; } });
     var totalEl = h('b', null, '0');
-    var undoBtn = h('button', { class: 'btn small', onClick: undo }, '↩ Deshacer');
-    var clearBtn = h('button', { class: 'btn small', onClick: clear }, '🗑 Borrar');
-    var repeatBtn = h('button', { class: 'btn small', onClick: repeat }, '🔁 Repetir');
-    var spinBtn = h('button', { class: 'btn cyan spin-btn', onClick: spin }, 'GIRAR');
+    var undoBtn = h('button', { class: 'btn small gold', onClick: undo }, '↩ Deshacer');
+    var clearBtn = h('button', { class: 'btn small gold', onClick: clear }, 'Borrar');
+    var repeatBtn = h('button', { class: 'btn small gold', onClick: repeat }, '🔁 Repetir');
+    var spinBtn = h('button', { class: 'btn big cyan', onClick: spin }, 'Girar');
     var tools = h('div', { class: 'tools' }, undoBtn, clearBtn, repeatBtn);
     // Barra fija abajo: siempre se ve el total y el botón, aunque estés bajando por la mesa.
-    var spinBar = h('div', { class: 'spin-bar' }, h('div', { class: 'total-line' }, 'En la mesa', h('br'), '🪙 ', totalEl), spinBtn);
+    var spinBar = h('div', { class: 'spin-bar' }, h('div', { class: 'total-line' }, 'En la mesa', h('br'), totalEl), spinBtn);
 
     ctx.el.append(wheelWrap, resultEl, histEl, picker.el, tools, boardEl, spinBar);
     renderBets();
@@ -98,6 +108,9 @@
       var cur = ((rot % 360) + 360) % 360;
       rot += ((desired - cur + 360) % 360) + 360 * (5 + rng.int(3));
       canvas.style.transform = 'rotate(' + rot + 'deg)';
+      // La bolita gira al revés y termina arriba, justo bajo la flecha, sobre el número que salió.
+      ballRot -= 360 * (7 + rng.int(3));
+      ball.style.transform = 'rotate(' + ballRot + 'deg)';
     }
 
     async function spin() {
@@ -125,9 +138,12 @@
       history.unshift({ n: number, c: col }); history = history.slice(0, 12);
       histEl.replaceChildren.apply(histEl, history.map(function (x) { return h('span', { class: 'dot ' + x.c }, String(x.n)); }));
       var label = (col === 'red' ? '🔴 ' : col === 'black' ? '⚫ ' : '🟢 ') + number;
-      if (res.net > 0) { resultEl.className = 'result-msg win'; resultEl.textContent = 'Salió ' + label + ' · ¡Ganaste +' + fmt(res.net) + ' 🪙!'; ctx.sfx.play(res.net >= stake * 5 ? 'bigwin' : 'win'); }
-      else if (res.net === 0) { resultEl.className = 'result-msg'; resultEl.textContent = 'Salió ' + label + ' · Quedaste a mano'; ctx.sfx.play('click'); }
-      else { resultEl.className = 'result-msg lose'; resultEl.textContent = 'Salió ' + label + ' · Perdiste ' + fmt(-res.net) + ' 🪙'; ctx.sfx.play('lose'); }
+      if (res.net > 0) {
+        resultEl.className = 'result-msg win'; resultEl.textContent = 'Salió ' + label + '. ¡Ganaste +' + fmt(res.net) + ' 🪙!';
+        var big = res.net >= stake * 5;
+        ctx.sfx.play(big ? 'bigwin' : 'win'); if (big) ctx.fx.rain(2400); else ctx.fx.burst({ count: 55, coins: true, y: window.innerHeight * 0.3 });
+      } else if (res.net === 0) { resultEl.className = 'result-msg'; resultEl.textContent = 'Salió ' + label + '. Quedaste a mano'; ctx.sfx.play('click'); }
+      else { resultEl.className = 'result-msg lose'; resultEl.textContent = 'Salió ' + label + '. Perdiste ' + fmt(-res.net) + ' 🪙'; ctx.sfx.play('lose'); }
 
       placed = []; busy = false; ctx.wallet.release(); renderBets();
     }

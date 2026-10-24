@@ -11,7 +11,10 @@
         var v = attrs[k];
         if (v === null || v === undefined || v === false) return;
         if (k === 'class') el.className = v;
-        else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+        else if (k === 'style' && typeof v === 'object') {
+          // Las variables CSS (--c) necesitan setProperty; Object.assign no las aplica.
+          Object.keys(v).forEach(function (p) { if (p.slice(0, 2) === '--') el.style.setProperty(p, v[p]); else el.style[p] = v[p]; });
+        }
         else if (k === 'html') el.innerHTML = v;
         else if (k.slice(0, 2) === 'on' && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v);
         else el.setAttribute(k, v === true ? '' : v);

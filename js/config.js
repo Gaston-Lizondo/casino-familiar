@@ -20,10 +20,10 @@
 
     // Jugadores iniciales (se crean la primera vez que se abre el juego en un dispositivo).
     defaultProfiles: [
-      { id: 'gaston', name: 'Gastón', emoji: '🧔', color: '#00e5ff' },
-      { id: 'eli', name: 'Eli', emoji: '👩', color: '#ff2bd6' },
-      { id: 'dante', name: 'Dante', emoji: '👦', color: '#c6ff00' },
-      { id: 'mia', name: 'Mía', emoji: '👧', color: '#ffd400' }
+      { id: 'gaston', name: 'Gastón', emoji: '🧔', color: '#3df5ff' },
+      { id: 'eli', name: 'Eli', emoji: '👩', color: '#ff3d9a' },
+      { id: 'dante', name: 'Dante', emoji: '👦', color: '#3dffa0' },
+      { id: 'mia', name: 'Mía', emoji: '👧', color: '#ffc94a' }
     ]
   };
 })(typeof self !== 'undefined' ? self : this);
