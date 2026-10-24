@@ -17,14 +17,45 @@
   var S = { view: 'profiles', profile: null, chips: 0, shown: 0, held: false, cleanup: null, nav: 0, game: null };
   var chipsEl = null;
 
+  // El saldo de arriba sube contando cuando cobrás; cuando apostás baja de una.
+  var countRaf = 0;
   function setShown(n) {
     var prev = S.shown; S.shown = n;
     if (!chipsEl) return;
-    chipsEl.textContent = fmt(n);
+    cancelAnimationFrame(countRaf);
+    var el = chipsEl;
+    if (n > prev && !reduceMotion && S.view === 'game') CF.FX.coinsTo(el.parentNode, Math.min(14, 4 + Math.round(Math.log(n - prev) * 1.2)));
+    if (n > prev && !reduceMotion) {
+      var t0 = performance.now(), dur = Math.min(1400, 350 + (n - prev) / 4);
+      (function step(now) {
+        var k = Math.min(1, (now - t0) / dur);
+        el.textContent = fmt(Math.round(prev + (n - prev) * (1 - Math.pow(1 - k, 3))));
+        if (k < 1) countRaf = requestAnimationFrame(step);
+      })(t0);
+    } else el.textContent = fmt(n);
     if (n !== prev) {
-      chipsEl.parentNode.classList.remove('up', 'down'); void chipsEl.offsetWidth;
-      chipsEl.parentNode.classList.add(n > prev ? 'up' : 'down');
+      el.parentNode.classList.remove('up', 'down'); void el.offsetWidth;
+      el.parentNode.classList.add(n > prev ? 'up' : 'down');
     }
+  }
+  var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  // ---------- Premios recientes de la familia (reales, guardados en este dispositivo) ----------
+  var FEED_KEY = 'feed', FEED_MIN_MULT = 5;
+  async function recordWin(game, amount, mult) {
+    var list = (await store.loadGame(FEED_KEY)) || [];
+    list.unshift({ who: S.profile.name, emoji: S.profile.emoji, game: game, amount: amount, mult: mult, at: Date.now() });
+    await store.saveGame(FEED_KEY, list.slice(0, 20));
+  }
+
+  // Festejo de premios grandes (lo usan los juegos). Devuelve una promesa que termina al cerrar el festejo.
+  function celebrateFor(gameName) {
+    return async function (payout, bet) {
+      if (!(payout > 0 && bet > 0)) return false;
+      var mult = payout / bet;
+      if (mult >= FEED_MIN_MULT) { try { await recordWin(gameName, payout, mult); } catch (e) { /* el registro nunca frena el juego */ } }
+      return CF.FX.celebrate({ amount: payout, mult: mult });
+    };
   }
   function syncDisplay() { if (!S.held) setShown(S.chips); }
 
@@ -60,6 +91,11 @@
     b.addEventListener('click', function () { b.textContent = SFX.toggle() ? '🔇' : '🔊'; });
     return b;
   }
+  function musicBtn() {
+    var b = h('button', { class: 'icon-btn' + (CF.Music.isOn() ? '' : ' off'), 'aria-label': 'Música', 'aria-pressed': String(CF.Music.isOn()) }, '🎵');
+    b.addEventListener('click', function () { var on = CF.Music.toggle(); b.classList.toggle('off', !on); b.setAttribute('aria-pressed', String(on)); });
+    return b;
+  }
   function renderTop() {
     chipsEl = null;
     var left, title, right = [];
@@ -72,7 +108,7 @@
       chipsEl = h('b', null, fmt(S.shown));
       right.push(h('div', { class: 'chips-pill', title: 'Tus fichas' }, h('span', { class: 'coin' }), chipsEl));
     }
-    right.push(muteBtn());
+    right.push(musicBtn(), muteBtn());
     topEl.replaceChildren(left, h('div', { class: 'top-title neon' }, title || ''), h('div', { class: 'top-right' }, right));
   }
 
@@ -116,17 +152,43 @@
 
   // ---------- Lobby ----------
   function renderLobby() {
-    var p = S.profile;
-    // El primer juego (tragamonedas) ocupa todo el ancho con marco de bombitas; el resto va de a dos.
-    var tiles = CF.Games.map(function (g, i) {
-      return h('button', { class: 'tile ' + g.color + (i === 0 ? ' wide' : ''), onClick: function () { SFX.play('click'); go('game', g.id); } },
-        h('span', { class: 'tile-icon' }, g.icon),
+    var p = S.profile, token = S.nav;
+    var slots = CF.Games.find(function (g) { return g.id === 'slots'; });
+    var topBet = Math.max.apply(null, Cfg.bets), topMult = CF.Slots ? CF.Slots.SYMBOLS.reduce(function (m, s) { return Math.max(m, s.pay3); }, 0) : 0;
+    var topIcon = CF.Slots ? CF.Slots.SYMBOLS.reduce(function (a, s) { return s.pay3 > a.pay3 ? s : a; }).icon : '💎';
+
+    // Portada: el premio mayor que de verdad existe (la tragamonedas paga x500 con tres 💎).
+    var hero = h('button', { class: 'tile hero', 'data-game': 'slots', onClick: function () { SFX.play('click'); go('game', 'slots'); } },
+      h('span', { class: 'hero-label' }, 'Premio mayor'),
+      h('span', { class: 'hero-amount' }, h('span', { class: 'coin big' }), fmt(topBet * topMult)),
+      h('span', { class: 'hero-how' }, topIcon + topIcon + topIcon + ' en la ' + (slots ? slots.name.toLowerCase() : 'tragamonedas') + ', apostando ' + fmt(topBet)),
+      h('span', { class: 'hero-cta' }, 'Jugar ' + (slots ? slots.name : '')));
+
+    var ticker = h('div', { class: 'ticker', 'aria-label': 'Últimos premios de la familia' }, h('div', { class: 'ticker-track' }, h('span', { class: 'tick-item muted' }, 'Cargando premios…')));
+    store.loadGame(FEED_KEY).then(function (list) {
+      if (token !== S.nav) return;
+      var items = (list || []).map(function (w) {
+        return h('span', { class: 'tick-item' }, w.emoji + ' ', h('b', null, w.who), ' cobró ', h('span', { class: 'tick-amt' }, fmt(w.amount)), ' en ' + w.game + ' (x' + fmt(Math.round(w.mult * 10) / 10) + ')');
+      });
+      var track = ticker.firstChild;
+      if (!items.length) { track.replaceChildren(h('span', { class: 'tick-item muted' }, 'Todavía nadie cobró un premio grande. Aparecen acá desde x5.')); return; }
+      // Se duplica la lista para que la marquesina gire sin cortes.
+      track.replaceChildren.apply(track, items.concat(items.map(function (n) { return n.cloneNode(true); })));
+      track.style.setProperty('--dur', Math.max(14, items.length * 5) + 's');
+      ticker.classList.add('moving');
+    });
+
+    var tiles = CF.Games.filter(function (g) { return g.id !== 'slots'; }).map(function (g, i) {
+      return h('button', { class: 'tile ' + g.color, 'data-game': g.id, style: { '--i': i + 1 }, onClick: function () { SFX.play('click'); go('game', g.id); } },
+        h('span', { class: 'tile-art' }, h('span', { class: 'tile-icon' }, g.icon)),
+        g.top ? h('span', { class: 'tile-top' }, g.top) : null,
         h('span', { class: 'tile-name' }, g.name),
         h('span', { class: 'tile-desc' }, g.desc));
     });
     appEl.append(h('section', { class: 'screen' },
       h('div', { class: 'hello' }, h('span', { class: 'avatar-mini', style: { '--c': p.color } }, p.emoji), h('div', null, h('div', { class: 'hi' }, 'Hola, ' + p.name), h('div', { class: 'sub left' }, 'Elegí una mesa'))),
       S.chips <= 0 ? h('div', { class: 'banner' }, 'Te quedaste sin fichas. Pedile a quien administra que te reponga desde ⚙️ Admin.') : null,
+      hero, ticker,
       h('div', { class: 'bento' }, tiles),
       h('p', { class: 'footer-note' }, 'Fichas de mentira, sin dinero real: solo diversión.')));
   }
@@ -137,7 +199,7 @@
     var wrap = h('div', { class: 'game game-' + g.id });
     appEl.append(wrap);
     var cleanup = g.mount({
-      el: wrap, wallet: wallet, sfx: SFX, fx: CF.FX, config: Cfg, store: store,
+      el: wrap, wallet: wallet, sfx: SFX, fx: CF.FX, config: Cfg, store: store, celebrate: celebrateFor(g.name),
       profile: { id: S.profile.id, name: S.profile.name, emoji: S.profile.emoji },
       loadGame: function (k) { return store.loadGame(k); },
       saveGame: function (k, v) { return store.saveGame(k, v); }

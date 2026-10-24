@@ -40,6 +40,7 @@ def inject_bj(page, cards, bet=100):
 
 
 def shown(page):
+    page.wait_for_timeout(1600)  # el saldo sube contando: se espera a que termine la animación
     return int(page.inner_text(".chips-pill b").replace(".", "").replace(",", "").strip())
 
 
@@ -61,13 +62,21 @@ with sync_playwright() as p:
     check("fichas iniciales 1000", shown(page) == 1000, shown(page))
     page.screenshot(path=str(SHOTS / "2-lobby.png"))
 
+    print("Festejo")
+    page.evaluate("void CF.FX.celebrate({ amount: 25000, mult: 50 })")
+    page.wait_for_selector(".cele.landed", timeout=6000)
+    check("festejo muestra el monto completo", page.inner_text(".cele-num").replace(".", "") == "25000", page.inner_text(".cele-num"))
+    page.screenshot(path=str(SHOTS / "2b-festejo.png"))
+    if page.locator(".cele").count(): page.locator(".cele").click(force=True)
+    page.wait_for_selector(".cele", state="detached", timeout=5000)
+
     print("Tragamonedas")
     page.click(".tile:has-text('Tragamonedas')")
     page.wait_for_selector(".slot-machine")
     page.click(".chip-btn:has-text('100')")
     before = chips(page)
     page.click("button.big:has-text('Girar')")
-    page.wait_for_function("document.querySelector('.result-msg').textContent !== 'Girando…' && !document.querySelector('button.big').disabled", timeout=8000)
+    page.wait_for_function("document.querySelector('.result-msg').textContent !== 'Girando…' && !document.querySelector('button.big').disabled", timeout=15000)
     after = chips(page)
     check("giro descontó o pagó coherente", after - before in [-100, 0] or after - before >= 0 and after - before <= 49900, (before, after))
     check("saldo mostrado = saldo guardado", shown(page) == after, (shown(page), after))
@@ -76,7 +85,7 @@ with sync_playwright() as p:
     page.click(".chip-btn:has-text('10')")
     for _ in range(12):
         page.click("button.big:has-text('Girar')")
-        page.wait_for_function("!document.querySelector('button.big').disabled", timeout=8000)
+        page.wait_for_function("!document.querySelector('button.big').disabled", timeout=15000)
     check("saldo coherente tras 12 giros", shown(page) == chips(page), (shown(page), chips(page)))
 
     print("Ruleta")

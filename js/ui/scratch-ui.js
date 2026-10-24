@@ -3,7 +3,7 @@
   'use strict';
   var CF = window.CF, h = CF.h, fmt = CF.fmt, SC = CF.Scratch;
 
-  CF.Games.push({ id: 'scratch', name: 'Raspadita', icon: '🎟️', desc: 'Encontrá tres iguales. Paga hasta x200', color: 'violet', mount: mount });
+  CF.Games.push({ id: 'scratch', name: 'Raspadita', icon: '🎟️', desc: 'Encontrá tres iguales', color: 'violet', top: 'Hasta x200', mount: mount });
 
   var W = 480, H = 320;
 
@@ -78,7 +78,7 @@
     canvas.addEventListener('pointerup', function () { drawing = false; });
     canvas.addEventListener('pointercancel', function () { drawing = false; });
 
-    function reveal() {
+    async function reveal() {
       if (revealed || !card) return;
       revealed = true; drawing = false; allBtn.style.display = 'none';
       canvas.style.opacity = '0';
@@ -86,8 +86,8 @@
       if (card.win) {
         Array.prototype.forEach.call(grid.children, function (el) { if (el.getAttribute('data-id') === card.symbol) el.classList.add('hit'); });
         msg.className = 'result-msg win'; msg.textContent = '¡Tres ' + SC.byId[card.symbol].icon + '! Ganaste +' + fmt(card.payout - card.bet) + ' 🪙';
-        ctx.sfx.play(card.mult >= 10 ? 'bigwin' : 'win');
-        if (card.mult >= 10) ctx.fx.rain(2600); else ctx.fx.burst({ count: 50, coins: true, y: window.innerHeight * 0.4 });
+        if (!(await ctx.celebrate(card.payout, card.bet))) { ctx.sfx.play('win'); ctx.fx.burst({ count: 50, coins: true, y: window.innerHeight * 0.4 }); }
+        if (!alive) return;
       } else { msg.className = 'result-msg lose'; msg.textContent = 'Ningún premio. ¡Probá otra!'; ctx.sfx.play('lose'); }
       ctx.wallet.release();
       busy = false; buyBtn.disabled = false; picker.setDisabled(false);

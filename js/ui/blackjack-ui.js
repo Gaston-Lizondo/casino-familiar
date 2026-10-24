@@ -3,7 +3,7 @@
   'use strict';
   var CF = window.CF, h = CF.h, fmt = CF.fmt, sleep = CF.sleep, BJ = CF.Blackjack;
 
-  CF.Games.push({ id: 'blackjack', name: 'Blackjack', icon: '🃏', desc: 'Llegá a 21 sin pasarte. Blackjack paga 3:2', color: 'mint', mount: mount });
+  CF.Games.push({ id: 'blackjack', name: 'Blackjack', icon: '🃏', desc: 'Llegá a 21 sin pasarte', color: 'mint', top: 'Paga 3:2', mount: mount });
 
   var seen = {}; // cartas que ya se animaron: así solo entra con animación la carta nueva
 

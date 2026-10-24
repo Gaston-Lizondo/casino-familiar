@@ -3,7 +3,7 @@
   'use strict';
   var CF = window.CF, h = CF.h, fmt = CF.fmt, sleep = CF.sleep, S = CF.Slots;
 
-  CF.Games.push({ id: 'slots', name: 'Tragamonedas', icon: '🎰', desc: 'Tres rodillos, premios hasta x500', color: 'pink', mount: mount });
+  CF.Games.push({ id: 'slots', name: 'Tragamonedas', icon: '🎰', desc: 'Tres rodillos, una línea de pago', color: 'pink', top: 'Hasta x500', mount: mount });
 
   function mount(ctx) {
     var rng = CF.RNG.create();
@@ -39,6 +39,7 @@
       busy = true; spinBtn.disabled = true; picker.setDisabled(true);
       if (!(await ctx.wallet.debit(bet))) { busy = false; spinBtn.disabled = false; picker.setDisabled(false); return; }
       machine.classList.remove('win', 'bigwin'); machine.classList.add('go');
+      reelEls.forEach(function (r) { r.children[1].classList.remove('hit'); });
       lever.classList.add('pull'); setTimeout(function () { lever.classList.remove('pull'); }, 350);
       msg.className = 'result-msg'; msg.textContent = 'Girando…';
 
@@ -65,14 +66,14 @@
       if (res.win && res.payout <= bet) {
         msg.className = 'result-msg'; msg.textContent = '🍒🍒 Recuperás tu apuesta'; ctx.sfx.play('click');
       } else if (res.win) {
-        var big = res.mult >= 25;
+        var big = res.mult >= 10;
         machine.classList.add(big ? 'bigwin' : 'win');
+        reelEls.forEach(function (r, i) { if (res.line ? res.line[i] : true) r.children[1].classList.add('hit'); });
         msg.className = 'result-msg win';
-        msg.textContent = (big ? '¡PREMIAZO! ' : '¡Ganaste! ') + '+' + fmt(res.payout - bet) + ' 🪙';
-        ctx.sfx.play(big ? 'bigwin' : 'win');
-        if (big) ctx.fx.rain(2600); else ctx.fx.burst({ count: 50, coins: true, y: window.innerHeight * 0.4 });
+        msg.textContent = '¡Ganaste! +' + fmt(res.payout - bet) + ' 🪙';
+        if (!(await ctx.celebrate(res.payout, bet))) { ctx.sfx.play('win'); ctx.fx.burst({ count: 50, coins: true, y: window.innerHeight * 0.4 }); }
       } else {
-        msg.className = 'result-msg lose'; msg.textContent = 'Casi. ¡Probá de nuevo!'; ctx.sfx.play('lose');
+        msg.className = 'result-msg lose'; msg.textContent = 'Sin premio esta vez'; ctx.sfx.play('lose');
       }
       ctx.wallet.release();
       busy = false; spinBtn.disabled = false; picker.setDisabled(false);

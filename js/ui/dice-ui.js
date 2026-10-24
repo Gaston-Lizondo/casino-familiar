@@ -3,7 +3,7 @@
   'use strict';
   var CF = window.CF, h = CF.h, fmt = CF.fmt, sleep = CF.sleep, D = CF.Dice;
 
-  CF.Games.push({ id: 'dice', name: 'Dados', icon: '🎲', desc: 'Menos, más o justo 7. Paga hasta x5,7', color: 'gold', mount: mount });
+  CF.Games.push({ id: 'dice', name: 'Dados', icon: '🎲', desc: 'Menos, más o justo 7', color: 'gold', top: 'Hasta x5,7', mount: mount });
 
   // Posiciones (0-8 en una grilla 3x3) que se encienden para cada cara.
   var PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
@@ -69,6 +69,7 @@
       if (res.win) {
         msg.className = 'result-msg win'; msg.textContent = '¡Ganaste! +' + fmt(res.payout - bet) + ' 🪙';
         var big = res.payout >= bet * 5;
+        await ctx.celebrate(res.payout, bet); // anota el premio en la marquesina si es x5 o más
         ctx.sfx.play(big ? 'bigwin' : 'win'); ctx.fx.burst({ count: big ? 90 : 45, coins: big, y: window.innerHeight * 0.45 });
       } else { msg.className = 'result-msg lose'; msg.textContent = 'No salió. ¡Otra vez!'; ctx.sfx.play('lose'); }
       ctx.wallet.release();

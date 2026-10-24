@@ -3,7 +3,7 @@
   'use strict';
   var CF = window.CF, h = CF.h, fmt = CF.fmt, sleep = CF.sleep, R = CF.Roulette;
 
-  CF.Games.push({ id: 'roulette', name: 'Ruleta', icon: '🎡', desc: 'Número, color o docena. Paga hasta x36', color: 'cyan', mount: mount });
+  CF.Games.push({ id: 'roulette', name: 'Ruleta', icon: '🎡', desc: 'Número, color o docena', color: 'cyan', top: 'Hasta x36', mount: mount });
 
   var FILL = { red: '#c4143f', black: '#1b0f2a', green: '#0e9b5e' };
   var SIZE = 252;
@@ -140,8 +140,8 @@
       var label = (col === 'red' ? '🔴 ' : col === 'black' ? '⚫ ' : '🟢 ') + number;
       if (res.net > 0) {
         resultEl.className = 'result-msg win'; resultEl.textContent = 'Salió ' + label + '. ¡Ganaste +' + fmt(res.net) + ' 🪙!';
-        var big = res.net >= stake * 5;
-        ctx.sfx.play(big ? 'bigwin' : 'win'); if (big) ctx.fx.rain(2400); else ctx.fx.burst({ count: 55, coins: true, y: window.innerHeight * 0.3 });
+        if (!(await ctx.celebrate(res.net + stake, stake))) { ctx.sfx.play('win'); ctx.fx.burst({ count: 55, coins: true, y: window.innerHeight * 0.3 }); }
+        if (!alive) return;
       } else if (res.net === 0) { resultEl.className = 'result-msg'; resultEl.textContent = 'Salió ' + label + '. Quedaste a mano'; ctx.sfx.play('click'); }
       else { resultEl.className = 'result-msg lose'; resultEl.textContent = 'Salió ' + label + '. Perdiste ' + fmt(-res.net) + ' 🪙'; ctx.sfx.play('lose'); }
 
