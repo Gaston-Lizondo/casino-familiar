@@ -306,6 +306,21 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .reel .cell.mid.hit { animation: symHit .55s ease-in-out 5; }
 @keyframes symHit { 50% { transform: scale(1.28); filter: drop-shadow(0 0 12px var(--gold)) drop-shadow(0 0 4px #fff); } }
 
+/* ----- Trucos: auto, casi, destacada ----- */
+.auto-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.btn.small.on { background: var(--gold); color: #3a2300; box-shadow: 0 0 14px var(--gold); }
+.slot-machine.tease { animation: teaseShake .19s ease-in-out infinite; box-shadow: 0 0 60px rgba(255, 46, 136, .85), 0 12px 0 #0a0219; }
+@keyframes teaseShake { 50% { transform: translateX(2px) rotate(.4deg); } }
+.reel .cell.tease { animation: teasePulse .5s ease-in-out 4; opacity: 1 !important; }
+@keyframes teasePulse { 50% { transform: scale(1.2); filter: drop-shadow(0 0 10px #ff2e88); } }
+.scell.tease { border-color: var(--pink); box-shadow: 0 0 16px var(--pink); animation: teasePulse .5s ease-in-out 3; }
+.hot-bar { display: flex; align-items: center; gap: 8px; width: 100%; margin: 0 0 12px; padding: 10px 14px; border-radius: 14px; border: 2px solid var(--pink); background: linear-gradient(90deg, rgba(255, 46, 136, .25), rgba(255, 46, 136, .06)); color: var(--text); font-size: 14px; text-align: left; box-shadow: 0 0 18px rgba(255, 46, 136, .35); }
+.hot-fire { font-size: 20px; animation: bob 1.2s ease-in-out infinite; }
+.hot-time { margin-left: auto; color: var(--muted); white-space: nowrap; }
+.hot-clock { color: #fff; font-variant-numeric: tabular-nums; } .hot-clock.urgent { color: var(--pink); animation: pop .5s infinite; }
+.tile.hot { box-shadow: 0 0 0 3px var(--pink), 0 0 26px rgba(255, 46, 136, .7), 0 6px 0 #0a0219; }
+.tile.hot::before { content: '🔥 Destacada'; position: absolute; top: 78px; left: 0; z-index: 1; padding: 3px 10px 3px 8px; border-radius: 0 10px 10px 0; font-size: 12px; font-weight: 800; color: #fff; background: var(--pink); }
+
 /* ----- Festejo de premios grandes ----- */
 .cele { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; background: radial-gradient(circle, rgba(60, 14, 120, .9), rgba(6, 1, 16, .97) 70%); animation: celeIn .3s ease-out; cursor: pointer; }
 .cele.out { opacity: 0; transition: opacity .25s; }

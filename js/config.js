@@ -15,6 +15,16 @@
     // Valores de apuesta que aparecen en los botones.
     bets: [10, 50, 100, 500],
 
+    // Trucos de casino online. Ninguno cambia las probabilidades ni los pagos: solo cómo se ve y se siente.
+    // Poné false en cualquiera para apagarlo.
+    trucos: {
+      casiGanas: true,          // derrotas que parecen "por un pelo": premio mayor pegado a la línea, 3er rodillo que tarda, raspaditas con dos 💎
+      festejarRecuperos: true,  // si cobrás algo pero igual o menos que lo apostado, se festeja como si ganaras
+      ganadoresFicticios: true, // la marquesina y algunos avisos muestran premios de jugadores inventados
+      giroAutomatico: true,     // botones Auto (10/25/50 giros) y Turbo en la tragamonedas
+      cuentaRegresiva: true     // "Mesa destacada" en el lobby, con reloj; cambia cada 10 minutos
+    },
+
     // Prefijo de lo que se guarda en el navegador (localStorage).
     storagePrefix: 'cf.v1.',
 

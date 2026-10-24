@@ -142,6 +142,10 @@
         resultEl.className = 'result-msg win'; resultEl.textContent = 'Salió ' + label + '. ¡Ganaste +' + fmt(res.net) + ' 🪙!';
         if (!(await ctx.celebrate(res.net + stake, stake))) { ctx.sfx.play('win'); ctx.fx.burst({ count: 55, coins: true, y: window.innerHeight * 0.3 }); }
         if (!alive) return;
+      } else if (res.totalReturn > 0 && (ctx.config.trucos || {}).festejarRecuperos) {
+        // Cobró algo pero no más de lo que apostó: se festeja igual (truco de casino online).
+        resultEl.className = 'result-msg win'; resultEl.textContent = 'Salió ' + label + '. ¡Cobraste ' + fmt(res.totalReturn) + '! 🪙';
+        ctx.sfx.play('win'); ctx.fx.burst({ count: 40, coins: true, y: window.innerHeight * 0.3 });
       } else if (res.net === 0) { resultEl.className = 'result-msg'; resultEl.textContent = 'Salió ' + label + '. Quedaste a mano'; ctx.sfx.play('click'); }
       else { resultEl.className = 'result-msg lose'; resultEl.textContent = 'Salió ' + label + '. Perdiste ' + fmt(-res.net) + ' 🪙'; ctx.sfx.play('lose'); }
 

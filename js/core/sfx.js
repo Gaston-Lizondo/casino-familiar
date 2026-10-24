@@ -63,6 +63,16 @@
     src.start(t0); src.stop(t0 + dur + 0.02);
   }
 
+  // Una moneda que choca: parciales metálicos cortos + un golpecito de ruido.
+  function clink(when) {
+    var f = 2600 + Math.random() * 1400, v = 0.035 + Math.random() * 0.02;
+    tone(f, 0.16, { type: 'sine', vol: v, when: when });
+    tone(f * 1.48, 0.11, { type: 'sine', vol: v * 0.6, when: when });
+    tone(f * 2.31, 0.07, { type: 'sine', vol: v * 0.4, when: when });
+    noise(0.025, { when: when, vol: 0.03, freq: 5000 });
+    if (Math.random() < 0.5) tone(f * 1.06, 0.12, { type: 'sine', vol: v * 0.7, when: when + 0.045 }); // rebote
+  }
+
   var C5 = 523.25, E5 = 659.25, G5 = 783.99, C6 = 1046.5, E6 = 1318.5, G6 = 1568;
   var sounds = {
     click: function () { tone(880, 0.05, { type: 'triangle', vol: 0.04 }); },
@@ -71,7 +81,9 @@
     card: function () { noise(0.09, { freq: 2500, vol: 0.05, ftype: 'bandpass' }); tone(240, 0.06, { type: 'triangle', to: 140, vol: 0.025 }); },
     dice: function () { noise(0.05, { freq: 1800, vol: 0.05, ftype: 'bandpass' }); tone(160 + Math.random() * 80, 0.04, { type: 'square', vol: 0.02, filter: 1200 }); },
     count: function () { tone(2000 + Math.random() * 600, 0.03, { type: 'sine', vol: 0.03 }); },
-    coin: function () { bell(1975 + Math.random() * 300, { vol: 0.025 }); },
+    coin: function () { clink(0); },
+    // Lluvia de monedas: muchos "clinc" desparramados.
+    coins: function (n) { n = n || 14; for (var i = 0; i < n; i++) clink(Math.random() * 0.9 + (i === 0 ? 0 : 0.02)); },
     win: function () {
       [C5, E5, G5, C6].forEach(function (f, i) { bell(f, { when: i * 0.08, vol: 0.05 }); });
       [C5, E5, G5].forEach(function (f) { tone(f, 0.6, { type: 'triangle', when: 0.32, vol: 0.03, attack: 0.02 }); });
@@ -82,13 +94,14 @@
       [C5, E5, G5, C6].forEach(function (f) { tone(f, 1.4, { type: 'sawtooth', when: 0.7, vol: 0.022, attack: 0.05, filter: 2200, detune: 6 }); tone(f, 1.4, { type: 'sawtooth', when: 0.7, vol: 0.022, attack: 0.05, filter: 2200, detune: -6 }); });
       for (var i = 0; i < 10; i++) bell(2200 + Math.random() * 1600, { when: 0.7 + i * 0.07, vol: 0.02 });
     },
+    tease: function () { for (var i = 0; i < 8; i++) { tone(110, 0.12, { type: 'sine', vol: 0.09, when: i * 0.19 }); tone(330 + i * 45, 0.1, { type: 'triangle', vol: 0.025, when: i * 0.19 + 0.05 }); } },
     lose: function () { tone(330, 0.18, { type: 'triangle', to: 220, vol: 0.04 }); tone(247, 0.3, { type: 'triangle', to: 165, vol: 0.035, when: 0.12 }); }
   };
 
   root.CF.SFX = {
-    play: function (name) {
+    play: function (name, arg) {
       if (muted) return;
-      try { if (sounds[name]) sounds[name](); } catch (e) { /* nunca romper el juego por el sonido */ }
+      try { if (sounds[name]) sounds[name](arg); } catch (e) { /* nunca romper el juego por el sonido */ }
     },
     isMuted: function () { return muted; },
     toggle: function () {

@@ -87,6 +87,13 @@ with sync_playwright() as p:
         page.click("button.big:has-text('Girar')")
         page.wait_for_function("!document.querySelector('button.big').disabled", timeout=15000)
     check("saldo coherente tras 12 giros", shown(page) == chips(page), (shown(page), chips(page)))
+    # Giro automático x10 con turbo
+    page.click("button:has-text('Turbo')")
+    page.click("button:has-text('Auto 10')")
+    page.wait_for_function("document.querySelector('button.big').textContent.includes('Parar')", timeout=5000)
+    page.screenshot(path=str(SHOTS / "3b-slots-auto.png"))
+    page.wait_for_function("document.querySelector('button.big').textContent === 'Girar'", timeout=90000)
+    check("giro automático termina y el saldo cierra", shown(page) == chips(page), (shown(page), chips(page)))
 
     print("Ruleta")
     page.click(".icon-btn[aria-label='Volver']"); page.wait_for_selector(".tile")

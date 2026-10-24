@@ -50,6 +50,7 @@
       busy = true; buyBtn.disabled = true; picker.setDisabled(true);
       if (!(await ctx.wallet.debit(bet))) { busy = false; buyBtn.disabled = false; picker.setDisabled(false); return; }
       card = SC.generate(rng, bet);
+      if ((ctx.config.trucos || {}).casiGanas && !card.win && rng.next() < 0.6) card.cells = nearMiss(card.cells);
       ctx.wallet.hold();
       if (card.payout > 0) await ctx.wallet.credit(card.payout);   // ya acreditado; rascar es solo ver el resultado
 
@@ -59,6 +60,15 @@
       revealed = false; moves = 0; coverCanvas();
       msg.className = 'result-msg'; msg.textContent = 'Rascá con el dedo. Hay premio si hay tres iguales';
       ctx.sfx.play('card'); allBtn.style.display = '';
+    }
+
+    // "Casi ganás": en un cartón perdedor pone exactamente dos símbolos grandes (💎 o ⭐). Sigue sin premio.
+    function nearMiss(cells) {
+      var sym = rng.next() < 0.6 ? 'diamond' : 'star', out = cells.slice();
+      var have = out.filter(function (c) { return c === sym; }).length;
+      var idx = rng.shuffle(out.map(function (c, i) { return c === sym ? -1 : i; }).filter(function (i) { return i >= 0; }));
+      for (var k = 0; k < 2 - have; k++) out[idx[k]] = sym;
+      return SC.evaluate(out).mult === 0 ? out : cells;
     }
 
     function clearedFraction() {
@@ -88,7 +98,11 @@
         msg.className = 'result-msg win'; msg.textContent = '¡Tres ' + SC.byId[card.symbol].icon + '! Ganaste +' + fmt(card.payout - card.bet) + ' 🪙';
         if (!(await ctx.celebrate(card.payout, card.bet))) { ctx.sfx.play('win'); ctx.fx.burst({ count: 50, coins: true, y: window.innerHeight * 0.4 }); }
         if (!alive) return;
-      } else { msg.className = 'result-msg lose'; msg.textContent = 'Ningún premio. ¡Probá otra!'; ctx.sfx.play('lose'); }
+      } else {
+        var two = ['diamond', 'star'].filter(function (id) { return card.cells.filter(function (c) { return c === id; }).length === 2; })[0];
+        if (two) Array.prototype.forEach.call(grid.children, function (el) { if (el.getAttribute('data-id') === two) el.classList.add('tease'); });
+        msg.className = 'result-msg lose'; msg.textContent = two ? '¡Casi! Te faltó un ' + SC.byId[two].icon + ' para x' + SC.byId[two].mult : 'Ningún premio. ¡Probá otra!'; ctx.sfx.play('lose');
+      }
       ctx.wallet.release();
       busy = false; buyBtn.disabled = false; picker.setDisabled(false);
     }

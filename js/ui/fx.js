@@ -59,6 +59,7 @@
     clearInterval(fountainTimer);
     fountainTimer = setInterval(function () {
       for (var i = 0; i < 3; i++) piece(rnd(W * 0.15, W * 0.85), H + 10, rnd(-3, 3), rnd(-17, -11), Math.random() < 0.7);
+      if (CF.SFX) CF.SFX.play('coins', 2);
       if (Date.now() > end) clearInterval(fountainTimer);
     }, 60);
   }
@@ -128,7 +129,7 @@
         { transform: 'translate(' + mx + 'px,' + my + 'px) scale(1.3)', opacity: 1, offset: 0.4 },
         { transform: 'translate(' + tx + 'px,' + ty + 'px) scale(.7)', opacity: 1 }
       ], { duration: d, delay: i * 45, easing: 'cubic-bezier(.5,0,.6,1)', fill: 'both' });
-      a.onfinish = function () { el.remove(); if (CF.SFX && i % 2 === 0) CF.SFX.play('coin'); };
+      a.onfinish = function () { el.remove(); if (CF.SFX) CF.SFX.play('coin'); };
     })(i);
   }
 
@@ -144,6 +145,7 @@
         var a = rnd(-Math.PI * 0.95, -Math.PI * 0.05), v = rnd(5, o.power || 13);
         piece(x, y, Math.cos(a) * v, Math.sin(a) * v, !!o.coins && i % 3 === 0);
       }
+      if (o.coins && CF.SFX) CF.SFX.play('coins', Math.round(n / 4));
     },
     // Lluvia de monedas y confeti desde arriba (premios grandes).
     rain: function (ms) {
@@ -152,6 +154,7 @@
       clearInterval(rainTimer);
       rainTimer = setInterval(function () {
         for (var i = 0; i < 4; i++) piece(rnd(0, W), -20, rnd(-1.5, 1.5), rnd(2, 5), Math.random() < 0.5);
+        if (CF.SFX) CF.SFX.play('coins', 1);
         if (Date.now() > end) clearInterval(rainTimer);
       }, 55);
     }

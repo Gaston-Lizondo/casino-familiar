@@ -39,6 +39,16 @@ git push -u origin main
 
 Fichas iniciales, PIN, valores de apuesta (10/50/100/500) y los jugadores iniciales. Los jugadores nuevos se agregan desde Admin sin tocar código.
 
+## Trucos de casino online (se apagan en `js/config.js` → `trucos`)
+
+Ninguno cambia probabilidades ni pagos; solo cómo se ve y se siente:
+
+- `casiGanas`: derrotas "por un pelo" (premio mayor pegado a la línea, tercer rodillo con suspenso, raspaditas perdedoras con dos 💎/⭐).
+- `festejarRecuperos`: se festeja aunque cobres igual o menos de lo que apostaste.
+- `ganadoresFicticios`: la marquesina y algunos avisos muestran premios de jugadores inventados.
+- `giroAutomatico`: Auto 10/25/50 y Turbo en la tragamonedas.
+- `cuentaRegresiva`: "Mesa destacada" con reloj, cambia cada 10 minutos.
+
 ## Retornos (porcentaje teórico que "devuelve" cada juego)
 
 | Juego | Retorno |

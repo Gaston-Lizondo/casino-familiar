@@ -48,6 +48,35 @@
     await store.saveGame(FEED_KEY, list.slice(0, 20));
   }
 
+  var TR = Cfg.trucos || {};
+
+  // Ganadores inventados (truco de casino online, se apaga con trucos.ganadoresFicticios).
+  var BOT_NAMES = [['Lucía', '👩'], ['Martín', '🧑'], ['Sofi', '👧'], ['Nico', '👨'], ['Valen', '🧒'], ['Juanma', '🧔'], ['Caro', '👱‍♀️'], ['Tomi', '👦'], ['Flor', '👩‍🦰'], ['Agus', '🧑‍🦱']];
+  var BOT_WINS = [['Tragamonedas', [5, 10, 25, 60, 250]], ['Ruleta', [3, 36]], ['Raspadita', [10, 50]], ['Dados', [5.7]], ['Blackjack', [2.5]]];
+  function fakeWin() {
+    var who = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)], g = BOT_WINS[Math.floor(Math.random() * BOT_WINS.length)];
+    var mult = g[1][Math.floor(Math.random() * g[1].length)], bet = Cfg.bets[Math.floor(Math.random() * Cfg.bets.length)];
+    return { who: who[0], emoji: who[1], game: g[0], amount: Math.round(bet * mult), mult: mult };
+  }
+  var fakeToastTimer = 0;
+  function scheduleFakeToast() {
+    clearTimeout(fakeToastTimer);
+    if (!TR.ganadoresFicticios) return;
+    fakeToastTimer = setTimeout(function () {
+      if (S.view === 'lobby' || S.view === 'game') {
+        var w = fakeWin();
+        if (w.mult >= 10) CF.toast('🎉 ' + w.who + ' cobró ' + fmt(w.amount) + ' en ' + w.game);
+      }
+      scheduleFakeToast();
+    }, 25000 + Math.random() * 35000);
+  }
+  scheduleFakeToast();
+
+  // Mesa destacada: cambia cada 10 minutos según el reloj (truco: cuenta regresiva).
+  var HOT_MS = 10 * 60 * 1000, hotTimer = 0;
+  function hotGame() { var list = CF.Games.filter(function (g) { return g.id !== 'slots'; }); return list[Math.floor(Date.now() / HOT_MS) % list.length]; }
+  function mmss(ms) { var s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
+
   // Festejo de premios grandes (lo usan los juegos). Devuelve una promesa que termina al cerrar el festejo.
   function celebrateFor(gameName) {
     return async function (payout, bet) {
@@ -115,6 +144,7 @@
   // ---------- Navegación ----------
   function go(view, arg) {
     if (S.cleanup) { try { S.cleanup(); } catch (e) { console.error(e); } S.cleanup = null; }
+    clearInterval(hotTimer);
     S.held = false; S.view = view; S.game = view === 'game' ? arg : null; S.nav++;
     if (view === 'profiles') S.profile = null;
     S.shown = S.chips;
@@ -167,7 +197,9 @@
     var ticker = h('div', { class: 'ticker', 'aria-label': 'Últimos premios de la familia' }, h('div', { class: 'ticker-track' }, h('span', { class: 'tick-item muted' }, 'Cargando premios…')));
     store.loadGame(FEED_KEY).then(function (list) {
       if (token !== S.nav) return;
-      var items = (list || []).map(function (w) {
+      var real = list || [], all = real.slice();
+      if (TR.ganadoresFicticios) { for (var k = 0; k < 8; k++) all.splice(Math.floor(Math.random() * (all.length + 1)), 0, fakeWin()); }
+      var items = all.map(function (w) {
         return h('span', { class: 'tick-item' }, w.emoji + ' ', h('b', null, w.who), ' cobró ', h('span', { class: 'tick-amt' }, fmt(w.amount)), ' en ' + w.game + ' (x' + fmt(Math.round(w.mult * 10) / 10) + ')');
       });
       var track = ticker.firstChild;
@@ -178,8 +210,20 @@
       ticker.classList.add('moving');
     });
 
+    var hot = TR.cuentaRegresiva ? hotGame() : null, hotBar = null;
+    if (hot) {
+      var clock = h('b', { class: 'hot-clock' }, mmss(HOT_MS - Date.now() % HOT_MS));
+      hotBar = h('button', { class: 'hot-bar', onClick: function () { SFX.play('click'); go('game', hot.id); } },
+        h('span', { class: 'hot-fire' }, '🔥'), h('span', null, 'Mesa destacada: ', h('b', null, hot.name)), h('span', { class: 'hot-time' }, 'termina en ', clock));
+      hotTimer = setInterval(function () {
+        var left = HOT_MS - Date.now() % HOT_MS;
+        clock.textContent = mmss(left);
+        clock.classList.toggle('urgent', left < 60000);
+        if (left < 1000) { clearInterval(hotTimer); setTimeout(function () { if (S.view === 'lobby') go('lobby'); }, 1200); }
+      }, 1000);
+    }
     var tiles = CF.Games.filter(function (g) { return g.id !== 'slots'; }).map(function (g, i) {
-      return h('button', { class: 'tile ' + g.color, 'data-game': g.id, style: { '--i': i + 1 }, onClick: function () { SFX.play('click'); go('game', g.id); } },
+      return h('button', { class: 'tile ' + g.color + (hot && hot.id === g.id ? ' hot' : ''), 'data-game': g.id, style: { '--i': i + 1 }, onClick: function () { SFX.play('click'); go('game', g.id); } },
         h('span', { class: 'tile-art' }, h('span', { class: 'tile-icon' }, g.icon)),
         g.top ? h('span', { class: 'tile-top' }, g.top) : null,
         h('span', { class: 'tile-name' }, g.name),
@@ -188,7 +232,7 @@
     appEl.append(h('section', { class: 'screen' },
       h('div', { class: 'hello' }, h('span', { class: 'avatar-mini', style: { '--c': p.color } }, p.emoji), h('div', null, h('div', { class: 'hi' }, 'Hola, ' + p.name), h('div', { class: 'sub left' }, 'Elegí una mesa'))),
       S.chips <= 0 ? h('div', { class: 'banner' }, 'Te quedaste sin fichas. Pedile a quien administra que te reponga desde ⚙️ Admin.') : null,
-      hero, ticker,
+      hero, hotBar, ticker,
       h('div', { class: 'bento' }, tiles),
       h('p', { class: 'footer-note' }, 'Fichas de mentira, sin dinero real: solo diversión.')));
   }
